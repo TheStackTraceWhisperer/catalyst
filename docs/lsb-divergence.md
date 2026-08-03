@@ -39,7 +39,7 @@ This is a living document and should be updated whenever an implementation choic
 | D-004 | Auth Security | Password verification standard is **Argon2id**. | Current security best practice and stronger default posture. | Account/auth services, account storage, operational security controls. | Not compatible with any legacy hash assumptions without explicit bridge logic (out of scope). | Approved |
 | D-005 | Client Integration Surface | Milestone 1 uses a Java LWJGL + Dear ImGui client shell for login + diagnostics, unlike LSB’s original client assumptions. | Needed for direct end-to-end validation and rapid debugging in this project. | Client UX, debugging workflow, integration testing velocity. | No behavior conflict on server domain rules; tooling surface is project-specific. | Approved |
 
-## Review Cadence
+| D-007 | Server Topology | **Gateway-routed multi-server** model rather than LSB's direct client-to-zone-server architecture. Client connects only to the gateway; login, lobby/character, and world services are internal. See `docs/network-architecture.md` for full topology. | Ops simplicity, security (backend never public-facing), scales world servers independently, single client endpoint. | Gateway, login service, lobby/character service, world servers, session routing table, zone assignment. | Not compatible with LSB's server discovery mechanism. | Planned |
 
 - Update this file for every architecture decision that diverges from LSB.
 - Revisit entries at each milestone boundary.

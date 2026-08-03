@@ -153,10 +153,25 @@ final class QuicGateway implements AutoCloseable {
             } finally {
                 buf.release();
             }
+            int newlineIdx = buffer.indexOf("\n");
+            if (newlineIdx >= 0 && !future.isDone()) {
+                String line = buffer.substring(0, newlineIdx).trim();
+                if (!line.isBlank()) {
+                    try {
+                        future.complete(WireCodec.decode(line));
+                    } catch (Exception e) {
+                        future.completeExceptionally(e);
+                    }
+                } else {
+                    future.completeExceptionally(new IOException("Empty response from server"));
+                }
+                ctx.close();
+            }
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
+            // Stream closed before a full line arrived
             if (!future.isDone()) {
                 String line = buffer.toString().trim();
                 if (!line.isBlank()) {

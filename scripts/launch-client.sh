@@ -24,4 +24,6 @@ if [[ ! -f "${CLIENT_JAR}" ]]; then
   echo "[client] missing jar: ${CLIENT_JAR}" >&2
   exit 1
 fi
-java -jar "${CLIENT_JAR}"
+java -cp "${CLIENT_JAR}:${ROOT_DIR}/ffxi-client/target/lib/*" \
+     --enable-native-access=ALL-UNNAMED \
+     catalyst.ffxi.client.ClientMain

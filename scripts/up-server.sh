@@ -31,4 +31,6 @@ if [[ ! -f "${SERVER_JAR}" ]]; then
   exit 1
 fi
 echo "[server] db=${FFXI_DB_URL} user=${FFXI_DB_USER}"
-java -jar "${SERVER_JAR}"
+java -cp "${SERVER_JAR}:${ROOT_DIR}/ffxi-server/target/lib/*" \
+     --enable-native-access=ALL-UNNAMED \
+     catalyst.ffxi.server.ServerMain

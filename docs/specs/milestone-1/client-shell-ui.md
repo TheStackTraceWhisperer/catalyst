@@ -2,44 +2,81 @@
 
 ## Purpose
 
-Define the minimum desktop client shell needed to exercise Milestone 1 networking and session flows.
+Define the desktop client shell for Milestone 1, implemented with LWJGL 3 and Dear ImGui.
 
-## Functional Requirements
+## Windows
 
-- Initialize LWJGL window and render loop.
-- Initialize Dear ImGui context and frame integration.
-- Provide runtime mode selection:
-  - server-connected mode
-  - local-only mode
-- Provide a login window with:
-  - username field
-  - password field
-  - connect/login action
-  - clear auth/session status display
-- Provide a debug log viewer window with:
-  - timestamped log lines
-  - severity level indicator
-  - auto-scroll toggle
-  - clear log action
+### Control Window (left panel)
 
-## Logging Scope (Minimum)
+Contains all interactive controls. Content changes based on the current phase.
 
-- Connection lifecycle events
-- Authentication request/response outcomes
-- Session state transitions
-- Timeout/disconnect cleanup events
-- Protocol/status errors
+#### Phase: Unauthenticated
+- Mode selector: Local / Remote radio buttons
+- Host and port input fields (locked once authenticated in Remote mode)
+- **Remote mode:** username/password inputs + Login button
+- **Local mode:** "Enter Local Zone" button
 
-## Rules
+#### Phase: Authenticated (auth token held, no game session)
+- Character list (name, race name, size, face, job, nation per row)
+- Select and Delete (soft delete) buttons per character
+- "Create Character" toggle button — reveals the create form:
+  - Name input
+  - Race combo (Hume Male/Female, Elvaan Male/Female, Tarutaru Male/Female, Mithra, Galka)
+  - Size combo (Small/Medium/Large) — auto-locked for Tarutaru (Small) and Galka (Large)
+  - Face numeric (1-8) + Variant B checkbox (maps to face 0-15)
+  - Starting Job combo (Warrior, Monk, White Mage, Black Mage, Red Mage, Thief)
+  - Nation combo (San d'Oria, Bastok, Windurst)
+  - Create and Cancel buttons
+- Refresh Characters and Sign Out buttons
+- After selecting a character: Play button + "Ready: \<name\>" label
 
-- UI must remain responsive while network operations are in progress.
-- Sensitive fields (passwords, tokens, session keys) must never be displayed in plaintext logs.
-- The log viewer is a development/debug tool and should be easy to disable or gate in production builds.
-- In local-only mode, login/auth controls may be disabled or bypassed, and UI should clearly indicate offline state.
+#### Phase: In Game (game session active)
+- "In game as: \<name\>" label
+- Ping Now button (manual keepalive trigger)
+- Logout Session button
+
+#### Status Bar (always visible at bottom of control window)
+- Mode, Status, Account, Auth Token (set/none), Selected Character, Session ID
+- KeepAlive status, Last RTT (ms), Last OK timestamp
+
+### Debug Log Viewer (right panel)
+
+- Timestamped log lines (`[HH:mm:ss] message`)
+- Auto-scroll toggle
+- Clear button
+- Captures: connection events, auth outcomes, character operations, session transitions, PING/PONG with RTT, errors
+
+## Phase Locking Rules
+
+| Action | Allowed when |
+|---|---|
+| Edit host/port | Only before authentication in Remote mode |
+| Login | Only in unauthenticated Remote mode |
+| Create/Delete character | Only in authenticated phase, not during active session |
+| Select character | Only in authenticated phase, not during active session |
+| Play | Only after character is selected, not during active session |
+| Logout | Only during active game session |
+
+## Sensitive Field Rules
+
+- Passwords are never written to the debug log
+- Auth tokens are shown as `<set>` / `<none>` only, never as the raw UUID
+- Session IDs are shown in the status bar (debug tool context)
+
+## Local-Only Mode
+
+- Login/auth controls are hidden; replaced by "Enter Local Zone"
+- Entering local zone sets a synthetic `LOCAL-<timestamp>` session string
+- Keepalive is disabled in local mode
+- Status bar shows local mode indicator
 
 ## Milestone 1 Done Criteria
 
-- Client starts and renders ImGui-based login + log viewer.
-- Login flow can be executed fully from the UI.
-- Runtime mode switching/selection is available for development workflows.
-- Log viewer captures enough detail to diagnose connection/auth/session issues without external tooling.
+- [x] LWJGL window initialises and renders ImGui at 60fps
+- [x] Login flow executes fully from the UI
+- [x] Character create form visible only on demand; hidden after successful create
+- [x] UI is phase-locked — correct controls visible per phase
+- [x] Host/port fields disabled once authenticated
+- [x] Character management controls hidden during active game session
+- [x] Debug log viewer captures all relevant session/auth events
+- [x] Runtime mode switching works and gracefully disconnects if session is active

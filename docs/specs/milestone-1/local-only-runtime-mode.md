@@ -2,31 +2,46 @@
 
 ## Purpose
 
-Enable client-side development workflows that do not depend on a running server, while preserving a clean boundary between offline simulation and server-authoritative play.
+Enable client-side development workflows that do not require a running server.
+
+## Current State (Milestone 1)
+
+Local-only mode is a lightweight bootstrap that:
+
+- Bypasses all network/auth paths
+- Sets a synthetic session string (`LOCAL-<timestamp>`)
+- Displays a status message indicating the local zone and preset character name
+- Keeps keepalive disabled (no PING loop)
+
+Movement, camera, and actual zone rendering are **out of scope for Milestone 1**. The mode exists to verify the mode-switching and UI phase-locking path without server dependency.
 
 ## Functional Requirements
 
-- Support a client startup mode that bypasses server connection/authentication.
-- Load a preset development character profile.
-- Load directly into a configured zone/entry context.
-- Enable movement and camera controls for in-zone iteration.
-- Reuse the same core render/update pipeline used in server-connected mode where possible.
+- `mode=LOCAL` radio button available at all times (including before any connection attempt).
+- Switching to local mode while a remote session is active triggers `gracefulDisconnect`.
+- Switching to remote mode from local resets auth state.
+- The UI clearly indicates local mode in the status bar.
+- No `accounts_sessions` row is created or modified by local mode.
 
-## Configuration Inputs
+## Configuration Inputs (Current)
 
-- `mode=local` runtime flag or equivalent launcher setting
-- preset character configuration source
-- initial zone ID and spawn transform
+- Zone: hardcoded to zone 230 (Southern San d'Oria) as a placeholder
+- Character: preset name "LocalDev"
+- No config file or launcher flag yet; selection is via the UI radio button
 
-## Rules
+## Future Scope
 
-- Local-only mode must be clearly marked in UI/logs to avoid confusion with server-authoritative sessions.
-- Local-only mode must not emit or persist server session records.
-- Local-only mode should use modular injection points (character provider, zone bootstrap provider) so future systems can replace stubs cleanly.
+When zone rendering is implemented, local-only mode will:
+
+- Accept a configurable zone ID and spawn transform
+- Load zone geometry and assets from local DAT files
+- Support movement and camera controls
+- Use the same render pipeline as server-connected mode (injection point exists)
 
 ## Milestone 1 Done Criteria
 
-- Client can start in local-only mode without server availability.
-- Client enters a target zone with preset character and can move.
-- Debug logs clearly indicate local-only runtime path and zone bootstrap events.
-
+- [x] Client starts and remains fully functional without a running server
+- [x] "Enter Local Zone" sets synthetic session state and updates status bar
+- [x] Keepalive loop does not run in local mode
+- [x] Switching from remote to local gracefully disconnects active sessions
+- [x] Status bar clearly shows `LOCAL` mode

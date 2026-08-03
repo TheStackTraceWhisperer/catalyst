@@ -4,6 +4,10 @@ import catalyst.ffxi.common.model.CharacterIdentity;
 import catalyst.ffxi.common.net.AuthCode;
 import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.common.net.WireCodec;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import de.mkammerer.argon2.Argon2;
+import de.mkammerer.argon2.Argon2Factory;
 import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
@@ -12,25 +16,42 @@ import java.io.OutputStreamWriter;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.charset.StandardCharsets;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ServerMain {
+    private static final Logger LOG = LoggerFactory.getLogger(ServerMain.class);
     private static final int DEFAULT_PORT = 35555;
     private static final Duration SESSION_TIMEOUT = Duration.ofSeconds(60);
 
-    public static void main(String[] args) throws IOException {
+    public static void main(String[] args) throws Exception {
         int port = args.length > 0 ? Integer.parseInt(args[0]) : DEFAULT_PORT;
-        AuthService authService = new AuthService();
-        SessionStore sessionStore = new SessionStore();
+
+        QuicStack.report();
+
+        Database database = Database.fromEnv();
+        database.initSchema();
+        database.ensureDevAccount();
+        LOG.info("Server startup: dbUrl={} dbUser={}", database.jdbcUrl(), database.dbUser());
+
+        AuthService authService = new AuthService(database);
+        SessionStore sessionStore = new SessionStore(database);
+
         ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
         scheduler.scheduleAtFixedRate(
             () -> sessionStore.cleanExpired(SESSION_TIMEOUT),
@@ -41,7 +62,7 @@ public final class ServerMain {
 
         ExecutorService workerPool = Executors.newCachedThreadPool();
         try (ServerSocket serverSocket = new ServerSocket(port)) {
-            System.out.println("FFXI minimal server listening on port " + port);
+            LOG.info("FFXI minimal server listening on port {}", port);
             while (true) {
                 Socket socket = serverSocket.accept();
                 workerPool.submit(() -> handleConnection(socket, authService, sessionStore));
@@ -66,7 +87,7 @@ public final class ServerMain {
                 default -> writeFrame(out, "ERROR", Map.of("code", "INVALID_REQUEST", "message", "Unknown frame type"));
             }
         } catch (Exception e) {
-            System.err.println("Connection handler error: " + e.getMessage());
+            LOG.error("Connection handler error: {}", e.getMessage(), e);
         }
     }
 
@@ -83,6 +104,7 @@ public final class ServerMain {
 
         AuthResult authResult = authService.login(username, password);
         if (!authResult.success()) {
+            LOG.warn("LOGIN_DENIED user={} code={}", username, authResult.code());
             writeFrame(out, "LOGIN_ERR", Map.of("code", authResult.code().name(), "message", authResult.message()));
             return;
         }
@@ -98,6 +120,7 @@ public final class ServerMain {
         );
 
         if (!createSession.success()) {
+            LOG.warn("LOGIN_SESSION_CONFLICT account={} character={}", authResult.accountId(), character.characterId());
             writeFrame(
                 out,
                 "LOGIN_ERR",
@@ -105,6 +128,7 @@ public final class ServerMain {
             );
             return;
         }
+        LOG.info("LOGIN_OK account={} character={} session={}", authResult.accountId(), character.characterId(), createSession.sessionId());
 
         Map<String, String> response = new HashMap<>();
         response.put("code", AuthCode.AUTH_SUCCESS.name());
@@ -130,14 +154,17 @@ public final class ServerMain {
         String sessionId = frame.get("sessionId");
         boolean ok = sessionStore.touch(sessionId);
         if (!ok) {
+            LOG.warn("PING_REJECT invalid-session={}", sessionId);
             writeFrame(out, "ERROR", Map.of("code", "UNAUTHORIZED", "message", "Invalid session"));
             return;
         }
+        LOG.debug("PONG session={}", sessionId);
         writeFrame(out, "PONG", Map.of("sessionId", sessionId));
     }
 
     private static void handleLogout(MessageFrame frame, BufferedWriter out, SessionStore sessionStore) throws IOException {
         String sessionId = frame.get("sessionId");
+        LOG.info("LOGOUT_REQUEST session={}", sessionId);
         sessionStore.remove(sessionId);
         writeFrame(out, "BYE", Map.of("sessionId", sessionId));
     }
@@ -146,9 +173,6 @@ public final class ServerMain {
         out.write(WireCodec.encode(type, fields));
         out.newLine();
         out.flush();
-    }
-
-    private record AccountRecord(String accountId, String username, String password, boolean disabled, boolean banned) {
     }
 
     private record AuthResult(boolean success, AuthCode code, String message, String accountId) {
@@ -162,50 +186,66 @@ public final class ServerMain {
     }
 
     private static final class AuthService {
-        private final Map<String, AccountRecord> accountsByUsername = new HashMap<>();
+        private final Database database;
+        private final Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
 
-        private AuthService() {
-            accountsByUsername.put("dev", new AccountRecord("1000", "dev", "dev", false, false));
+        private AuthService(Database database) {
+            this.database = database;
         }
 
         AuthResult login(String username, String password) {
-            AccountRecord account = accountsByUsername.get(username);
-            if (account == null || !account.password().equals(password)) {
+            if (username == null || password == null) {
                 return AuthResult.fail(AuthCode.AUTH_INVALID_CREDENTIALS, "Invalid credentials");
             }
-            if (account.disabled()) {
-                return AuthResult.fail(AuthCode.AUTH_ACCOUNT_DISABLED, "Account disabled");
-            }
-            if (account.banned()) {
-                return AuthResult.fail(AuthCode.AUTH_ACCOUNT_BANNED, "Account banned");
-            }
-            return AuthResult.ok(account.accountId());
-        }
-    }
 
-    private record SessionRecord(
-        String sessionId,
-        String accountId,
-        String characterId,
-        String serverAddress,
-        int serverPort,
-        String clientAddress,
-        int clientPort,
-        Instant createdAt,
-        Instant lastSeenAt
-    ) {
-        SessionRecord touch() {
-            return new SessionRecord(
-                sessionId,
-                accountId,
-                characterId,
-                serverAddress,
-                serverPort,
-                clientAddress,
-                clientPort,
-                createdAt,
-                Instant.now()
-            );
+            try (Connection connection = database.dataSource.getConnection()) {
+                try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT id, password_hash, status FROM accounts WHERE login = ? LIMIT 1"
+                )) {
+                    ps.setString(1, username);
+                    try (ResultSet rs = ps.executeQuery()) {
+                        if (!rs.next()) {
+                            LOG.warn("AUTH_FAIL user={} reason=no-account", username);
+                            return AuthResult.fail(AuthCode.AUTH_INVALID_CREDENTIALS, "Invalid credentials");
+                        }
+
+                        String accountId = Long.toString(rs.getLong("id"));
+                        String passwordHash = rs.getString("password_hash");
+                        int status = rs.getInt("status");
+                        boolean valid = passwordHash != null && argon2.verify(passwordHash, password.toCharArray());
+
+                        if (!valid) {
+                            LOG.warn("AUTH_FAIL user={} accountId={} reason=bad-password", username, accountId);
+                            return AuthResult.fail(AuthCode.AUTH_INVALID_CREDENTIALS, "Invalid credentials");
+                        }
+                        if (status <= 0) {
+                            LOG.warn("AUTH_FAIL user={} accountId={} reason=disabled", username, accountId);
+                            return AuthResult.fail(AuthCode.AUTH_ACCOUNT_DISABLED, "Account disabled");
+                        }
+                        if (isBanned(connection, rs.getLong("id"))) {
+                            LOG.warn("AUTH_FAIL user={} accountId={} reason=banned", username, accountId);
+                            return AuthResult.fail(AuthCode.AUTH_ACCOUNT_BANNED, "Account banned");
+                        }
+
+                        LOG.info("AUTH_OK user={} accountId={} argon2id=true", username, accountId);
+                        return AuthResult.ok(accountId);
+                    }
+                }
+            } catch (Exception e) {
+                LOG.error("AUTH_ERROR user={} message={}", username, e.getMessage(), e);
+                return AuthResult.fail(AuthCode.AUTH_SERVER_ERROR, "Auth server error");
+            }
+        }
+
+        private boolean isBanned(Connection connection, long accountId) throws SQLException {
+            try (PreparedStatement ps = connection.prepareStatement(
+                "SELECT 1 FROM accounts_banned WHERE account_id = ? AND (unban_at IS NULL OR unban_at > NOW()) LIMIT 1"
+            )) {
+                ps.setLong(1, accountId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    return rs.next();
+                }
+            }
         }
     }
 
@@ -220,11 +260,13 @@ public final class ServerMain {
     }
 
     private static final class SessionStore {
-        private final Map<String, SessionRecord> sessionsBySessionId = new ConcurrentHashMap<>();
-        private final Map<String, String> sessionByAccountId = new ConcurrentHashMap<>();
-        private final Map<String, String> sessionByCharacterId = new ConcurrentHashMap<>();
+        private final Database database;
 
-        synchronized CreateSessionResult create(
+        private SessionStore(Database database) {
+            this.database = database;
+        }
+
+        CreateSessionResult create(
             String accountId,
             String characterId,
             String serverAddress,
@@ -232,55 +274,241 @@ public final class ServerMain {
             String clientAddress,
             int clientPort
         ) {
-            if (sessionByAccountId.containsKey(accountId) || sessionByCharacterId.containsKey(characterId)) {
+            String sessionId = UUID.randomUUID().toString();
+            String sessionKey = UUID.randomUUID().toString();
+
+            try (Connection connection = database.dataSource.getConnection()) {
+                connection.setAutoCommit(false);
+                try {
+                    try (PreparedStatement check = connection.prepareStatement(
+                        "SELECT 1 FROM accounts_sessions WHERE account_id = ? OR character_id = ? LIMIT 1"
+                    )) {
+                        check.setLong(1, Long.parseLong(accountId));
+                        check.setLong(2, Long.parseLong(characterId));
+                        try (ResultSet rs = check.executeQuery()) {
+                            if (rs.next()) {
+                                connection.rollback();
+                                return CreateSessionResult.conflict();
+                            }
+                        }
+                    }
+
+                    try (PreparedStatement insert = connection.prepareStatement(
+                        "INSERT INTO accounts_sessions(session_id, account_id, character_id, session_key, server_address, server_port, client_address, client_port, version_mismatch, last_zoneout_time, last_seen_at, created_at) " +
+                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW(), NOW())"
+                    )) {
+                        insert.setObject(1, UUID.fromString(sessionId));
+                        insert.setLong(2, Long.parseLong(accountId));
+                        insert.setLong(3, Long.parseLong(characterId));
+                        insert.setString(4, sessionKey);
+                        insert.setString(5, serverAddress);
+                        insert.setInt(6, serverPort);
+                        insert.setString(7, clientAddress);
+                        insert.setInt(8, clientPort);
+                        insert.setBoolean(9, false);
+                        insert.executeUpdate();
+                    }
+
+                    try (PreparedStatement ipRecord = connection.prepareStatement(
+                        "INSERT INTO account_ip_record(login_time, account_id, character_id, client_ip) VALUES (NOW(), ?, ?, ?)"
+                    )) {
+                        ipRecord.setLong(1, Long.parseLong(accountId));
+                        ipRecord.setLong(2, Long.parseLong(characterId));
+                        ipRecord.setString(3, clientAddress);
+                        ipRecord.executeUpdate();
+                    }
+
+                    connection.commit();
+                    LOG.info("SESSION_CREATE account={} char={} session={} client={}:{}", accountId, characterId, sessionId, clientAddress, clientPort);
+                    return CreateSessionResult.ok(sessionId);
+                } catch (SQLException e) {
+                    connection.rollback();
+                    if (isUniqueViolation(e)) {
+                        LOG.warn("SESSION_CONFLICT account={} char={}", accountId, characterId);
+                        return CreateSessionResult.conflict();
+                    }
+                    throw e;
+                } finally {
+                    connection.setAutoCommit(true);
+                }
+            } catch (Exception e) {
+                LOG.error("SESSION_CREATE_ERR account={} char={} message={}", accountId, characterId, e.getMessage(), e);
                 return CreateSessionResult.conflict();
             }
-
-            String sessionId = UUID.randomUUID().toString();
-            SessionRecord record = new SessionRecord(
-                sessionId,
-                accountId,
-                characterId,
-                serverAddress,
-                serverPort,
-                clientAddress,
-                clientPort,
-                Instant.now(),
-                Instant.now()
-            );
-            sessionsBySessionId.put(sessionId, record);
-            sessionByAccountId.put(accountId, sessionId);
-            sessionByCharacterId.put(characterId, sessionId);
-            System.out.println("SESSION_CREATE account=" + accountId + " char=" + characterId + " session=" + sessionId);
-            return CreateSessionResult.ok(sessionId);
         }
 
-        synchronized boolean touch(String sessionId) {
-            SessionRecord current = sessionsBySessionId.get(sessionId);
-            if (current == null) {
+        boolean touch(String sessionId) {
+            try (Connection connection = database.dataSource.getConnection();
+                 PreparedStatement ps = connection.prepareStatement(
+                     "UPDATE accounts_sessions SET last_seen_at = NOW() WHERE session_id = ?"
+                 )) {
+                ps.setObject(1, UUID.fromString(sessionId));
+                return ps.executeUpdate() > 0;
+            } catch (Exception e) {
+                LOG.error("SESSION_TOUCH_ERR session={} message={}", sessionId, e.getMessage(), e);
                 return false;
             }
-            sessionsBySessionId.put(sessionId, current.touch());
-            return true;
         }
 
-        synchronized void remove(String sessionId) {
-            SessionRecord record = sessionsBySessionId.remove(sessionId);
-            if (record == null) {
-                return;
+        void remove(String sessionId) {
+            try (Connection connection = database.dataSource.getConnection();
+                 PreparedStatement ps = connection.prepareStatement(
+                     "DELETE FROM accounts_sessions WHERE session_id = ?"
+                 )) {
+                ps.setObject(1, UUID.fromString(sessionId));
+                int deleted = ps.executeUpdate();
+                if (deleted > 0) {
+                    LOG.info("SESSION_REMOVE session={}", sessionId);
+                }
+            } catch (Exception e) {
+                LOG.error("SESSION_REMOVE_ERR session={} message={}", sessionId, e.getMessage(), e);
             }
-            sessionByAccountId.remove(record.accountId());
-            sessionByCharacterId.remove(record.characterId());
-            System.out.println("SESSION_REMOVE account=" + record.accountId() + " char=" + record.characterId() + " session=" + sessionId);
         }
 
-        synchronized void cleanExpired(Duration timeout) {
+        void cleanExpired(Duration timeout) {
             Instant threshold = Instant.now().minus(timeout);
-            sessionsBySessionId.values().stream()
-                .filter(s -> s.lastSeenAt().isBefore(threshold))
-                .map(SessionRecord::sessionId)
-                .toList()
-                .forEach(this::remove);
+            try (Connection connection = database.dataSource.getConnection();
+                 PreparedStatement ps = connection.prepareStatement(
+                     "DELETE FROM accounts_sessions WHERE last_seen_at < ?"
+                 )) {
+                ps.setTimestamp(1, Timestamp.from(threshold));
+                int deleted = ps.executeUpdate();
+                if (deleted > 0) {
+                    LOG.info("SESSION_TIMEOUT_CLEANUP count={} threshold={}", deleted, threshold);
+                }
+            } catch (Exception e) {
+                LOG.error("SESSION_TIMEOUT_CLEANUP_ERR threshold={} message={}", threshold, e.getMessage(), e);
+            }
+        }
+
+        private boolean isUniqueViolation(SQLException e) {
+            return "23505".equals(e.getSQLState());
+        }
+    }
+
+    private static final class Database {
+        private final HikariDataSource dataSource;
+        private final String jdbcUrl;
+        private final String dbUser;
+
+        private Database(HikariDataSource dataSource, String jdbcUrl, String dbUser) {
+            this.dataSource = dataSource;
+            this.jdbcUrl = jdbcUrl;
+            this.dbUser = dbUser;
+        }
+
+        static Database fromEnv() {
+            String url = System.getenv().getOrDefault("FFXI_DB_URL", "jdbc:postgresql://localhost:5432/ffxi");
+            String user = System.getenv().getOrDefault("FFXI_DB_USER", "ffxi");
+            String password = System.getenv().getOrDefault("FFXI_DB_PASSWORD", "ffxi");
+
+            HikariConfig config = new HikariConfig();
+            config.setJdbcUrl(url);
+            config.setUsername(user);
+            config.setPassword(password);
+            config.setMaximumPoolSize(10);
+            config.setMinimumIdle(1);
+            config.setPoolName("ffxi-server-db");
+            LOG.info("DB_CONNECT initializing pool url={} user={}", url, user);
+            return new Database(new HikariDataSource(config), url, user);
+        }
+
+        String jdbcUrl() {
+            return jdbcUrl;
+        }
+
+        String dbUser() {
+            return dbUser;
+        }
+
+        void initSchema() throws SQLException {
+            try (Connection connection = dataSource.getConnection();
+                 Statement st = connection.createStatement()) {
+                st.execute("""
+                    CREATE TABLE IF NOT EXISTS accounts (
+                      id BIGSERIAL PRIMARY KEY,
+                      login VARCHAR(32) NOT NULL UNIQUE,
+                      password_hash TEXT NOT NULL,
+                      status SMALLINT NOT NULL DEFAULT 1,
+                      priv SMALLINT NOT NULL DEFAULT 1,
+                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """);
+                st.execute("""
+                    CREATE TABLE IF NOT EXISTS accounts_banned (
+                      account_id BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+                      banned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      unban_at TIMESTAMPTZ NULL,
+                      ban_comment TEXT NULL
+                    )
+                    """);
+                st.execute("""
+                    CREATE TABLE IF NOT EXISTS accounts_sessions (
+                      session_id UUID PRIMARY KEY,
+                      account_id BIGINT NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
+                      character_id BIGINT NOT NULL UNIQUE,
+                      session_key TEXT NOT NULL,
+                      server_address TEXT NOT NULL,
+                      server_port INTEGER NOT NULL,
+                      client_address TEXT NOT NULL,
+                      client_port INTEGER NOT NULL,
+                      version_mismatch BOOLEAN NOT NULL DEFAULT FALSE,
+                      last_zoneout_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    )
+                    """);
+                st.execute("""
+                    CREATE TABLE IF NOT EXISTS account_ip_record (
+                      login_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                      account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+                      character_id BIGINT NOT NULL,
+                      client_ip TEXT NOT NULL
+                    )
+                    """);
+                LOG.info("DB_SCHEMA_READY tables=accounts,accounts_banned,accounts_sessions,account_ip_record");
+            }
+        }
+
+        void ensureDevAccount() throws SQLException {
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement find = connection.prepareStatement(
+                     "SELECT id FROM accounts WHERE login = ? LIMIT 1"
+                 )) {
+                find.setString(1, "dev");
+                try (ResultSet rs = find.executeQuery()) {
+                    if (rs.next()) {
+                        LOG.info("DB_BOOTSTRAP_ACCOUNT_EXISTS login=dev accountId={}", rs.getLong("id"));
+                        return;
+                    }
+                }
+
+                Argon2 argon2 = Argon2Factory.create(Argon2Factory.Argon2Types.ARGON2id);
+                String hash = argon2.hash(3, 65_536, 1, "dev".toCharArray());
+                try (PreparedStatement insert = connection.prepareStatement(
+                    "INSERT INTO accounts(login, password_hash, status, priv) VALUES (?, ?, 1, 1)"
+                )) {
+                    insert.setString(1, "dev");
+                    insert.setString(2, hash);
+                    insert.executeUpdate();
+                }
+                LOG.info("DB_BOOTSTRAP_ACCOUNT_CREATED login=dev argon2id=true");
+            }
+        }
+    }
+
+    private static final class QuicStack {
+        private QuicStack() {
+        }
+
+        static void report() {
+            try {
+                Class.forName("io.netty.incubator.codec.quic.Quic");
+                LOG.info("QUIC_STACK_DETECTED provider=netty-incubator");
+            } catch (ClassNotFoundException e) {
+                LOG.warn("QUIC_STACK_MISSING provider=netty-incubator");
+            }
         }
     }
 

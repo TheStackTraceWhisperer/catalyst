@@ -61,6 +61,11 @@
       <artifactId>imgui-java-natives-linux</artifactId>
       <version>${imgui.version}</version>
     </dependency>
+    <dependency>
+      <groupId>io.netty.incubator</groupId>
+      <artifactId>netty-incubator-codec-classes-quic</artifactId>
+      <version>${netty.quic.version}</version>
+    </dependency>
   </dependencies>
 
   <build>

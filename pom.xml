@@ -20,6 +20,7 @@
     <maven.compiler.release>21</maven.compiler.release>
     <lwjgl.version>3.3.4</lwjgl.version>
     <imgui.version>1.86.11</imgui.version>
+    <netty.quic.version>0.0.73.Final</netty.quic.version>
   </properties>
 
   <dependencyManagement>

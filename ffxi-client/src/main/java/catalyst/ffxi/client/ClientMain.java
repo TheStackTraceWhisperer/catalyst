@@ -99,6 +99,7 @@ public final class ClientMain {
         imGuiGl3.init("#version 150");
 
         log("Client started in LOCAL mode");
+        log(quicStackStatus());
 
         while (!glfwWindowShouldClose(window)) {
             glfwPollEvents();
@@ -338,5 +339,14 @@ public final class ClientMain {
 
     private String formatTime(long epochMs) {
         return Instant.ofEpochMilli(epochMs).atZone(ZoneId.systemDefault()).toLocalTime().format(TIME_FMT);
+    }
+
+    private String quicStackStatus() {
+        try {
+            Class.forName("io.netty.incubator.codec.quic.Quic");
+            return "QUIC stack detected: Netty incubator codec classes available";
+        } catch (ClassNotFoundException e) {
+            return "QUIC stack missing from classpath";
+        }
     }
 }

@@ -1,0 +1,38 @@
+CREATE TABLE IF NOT EXISTS accounts (
+  id BIGSERIAL PRIMARY KEY,
+  login VARCHAR(32) NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  status SMALLINT NOT NULL DEFAULT 1,
+  priv SMALLINT NOT NULL DEFAULT 1,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS accounts_banned (
+  account_id BIGINT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  banned_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  unban_at TIMESTAMPTZ NULL,
+  ban_comment TEXT NULL
+);
+
+CREATE TABLE IF NOT EXISTS accounts_sessions (
+  session_id UUID PRIMARY KEY,
+  account_id BIGINT NOT NULL UNIQUE REFERENCES accounts(id) ON DELETE CASCADE,
+  character_id BIGINT NOT NULL UNIQUE,
+  session_key TEXT NOT NULL,
+  server_address TEXT NOT NULL,
+  server_port INTEGER NOT NULL,
+  client_address TEXT NOT NULL,
+  client_port INTEGER NOT NULL,
+  version_mismatch BOOLEAN NOT NULL DEFAULT FALSE,
+  last_zoneout_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS account_ip_record (
+  login_time TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  character_id BIGINT NOT NULL,
+  client_ip TEXT NOT NULL
+);

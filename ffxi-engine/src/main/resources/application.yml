@@ -1,0 +1,9 @@
+micronaut:
+  banner:
+    enabled: false
+
+engine:
+  window:
+    width: 1280
+    height: 720
+    title: FFXI Client

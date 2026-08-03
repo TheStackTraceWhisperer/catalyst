@@ -20,47 +20,33 @@
       <version>${project.version}</version>
     </dependency>
     <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl</artifactId>
+      <groupId>catalyst</groupId>
+      <artifactId>ffxi-engine</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <!-- Micronaut -->
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-inject</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl-glfw</artifactId>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-context</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl-opengl</artifactId>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-runtime</artifactId>
     </dependency>
     <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl</artifactId>
-      <classifier>natives-linux</classifier>
+      <groupId>jakarta.inject</groupId>
+      <artifactId>jakarta.inject-api</artifactId>
     </dependency>
+    <!-- Lombok -->
     <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl-glfw</artifactId>
-      <classifier>natives-linux</classifier>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
     </dependency>
-    <dependency>
-      <groupId>org.lwjgl</groupId>
-      <artifactId>lwjgl-opengl</artifactId>
-      <classifier>natives-linux</classifier>
-    </dependency>
-    <dependency>
-      <groupId>io.github.spair</groupId>
-      <artifactId>imgui-java-binding</artifactId>
-      <version>${imgui.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.github.spair</groupId>
-      <artifactId>imgui-java-lwjgl3</artifactId>
-      <version>${imgui.version}</version>
-    </dependency>
-    <dependency>
-      <groupId>io.github.spair</groupId>
-      <artifactId>imgui-java-natives-linux</artifactId>
-      <version>${imgui.version}</version>
-    </dependency>
+    <!-- QUIC -->
     <dependency>
       <groupId>io.netty.incubator</groupId>
       <artifactId>netty-incubator-codec-classes-quic</artifactId>
@@ -79,12 +65,15 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-jar-plugin</artifactId>
-        <version>3.4.2</version>
         <configuration>
           <archive>
             <manifest>
-              <mainClass>catalyst.ffxi.client.ClientMain</mainClass>
+              <mainClass>catalyst.ffxi.client.ClientApplication</mainClass>
               <addClasspath>true</addClasspath>
               <classpathPrefix>lib/</classpathPrefix>
             </manifest>
@@ -94,18 +83,14 @@
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
-        <version>3.8.1</version>
         <executions>
           <execution>
             <id>copy-runtime-deps</id>
             <phase>package</phase>
-            <goals>
-              <goal>copy-dependencies</goal>
-            </goals>
+            <goals><goal>copy-dependencies</goal></goals>
             <configuration>
               <includeScope>runtime</includeScope>
               <outputDirectory>${project.build.directory}/lib</outputDirectory>
-              <excludeTransitive>false</excludeTransitive>
             </configuration>
           </execution>
         </executions>

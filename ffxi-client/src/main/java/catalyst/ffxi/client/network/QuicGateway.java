@@ -1,4 +1,4 @@
-package catalyst.ffxi.client;
+package catalyst.ffxi.client.network;
 
 import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.common.net.WireCodec;

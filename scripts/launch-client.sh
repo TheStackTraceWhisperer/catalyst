@@ -26,4 +26,4 @@ if [[ ! -f "${CLIENT_JAR}" ]]; then
 fi
 java -cp "${CLIENT_JAR}:${ROOT_DIR}/ffxi-client/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.ffxi.client.ClientMain
+     catalyst.ffxi.client.ClientApplication

@@ -1,7 +1,8 @@
-package catalyst.ffxi.server;
+package catalyst.ffxi.server.transport;
 
 import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.common.net.WireCodec;
+import catalyst.ffxi.server.config.ServerProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
@@ -25,24 +26,30 @@ import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import jakarta.inject.Singleton;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-final class QuicServerTransport {
+@Singleton
+public final class QuicServerTransport {
     private static final Logger LOGGER = LoggerFactory.getLogger(QuicServerTransport.class);
     static final String PROTOCOL = "ffxi-1";
 
     private final int port;
-    private final Function<MessageFrame, MessageFrame> dispatcher;
+    private Function<MessageFrame, MessageFrame> dispatcher = req ->
+        MessageFrame.builder("ERROR").put("code","NOT_READY").put("message","Dispatcher not set").build();
     private EventLoopGroup group;
     private Channel bindChannel;
 
-    QuicServerTransport(int port, Function<MessageFrame, MessageFrame> dispatcher) {
-        this.port = port;
+    QuicServerTransport(ServerProperties props) {
+        this.port = props.getPort();
+    }
+
+    public void setDispatcher(Function<MessageFrame, MessageFrame> dispatcher) {
         this.dispatcher = dispatcher;
     }
 
-    void start() throws Exception {
+    public void start() throws Exception {
         SelfSignedCertificate cert = new SelfSignedCertificate();
         QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
             .applicationProtocols("ffxi-1")
@@ -76,13 +83,13 @@ final class QuicServerTransport {
         LOGGER.info("QUIC server bound on UDP port {}", port);
     }
 
-    void awaitShutdown() throws InterruptedException {
+    public void awaitShutdown() throws InterruptedException {
         if (bindChannel != null) {
             bindChannel.closeFuture().sync();
         }
     }
 
-    void stop() {
+    public void stop() {
         if (bindChannel != null) {
             bindChannel.close();
         }
@@ -93,7 +100,7 @@ final class QuicServerTransport {
 
     @ChannelHandler.Sharable
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
-        private final Function<MessageFrame, MessageFrame> dispatcher;
+        private Function<MessageFrame, MessageFrame> dispatcher = req -> MessageFrame.builder("ERROR").put("code","NOT_READY").put("message","Dispatcher not set").build();
         private final StringBuilder lineBuffer = new StringBuilder();
 
         RequestHandler(Function<MessageFrame, MessageFrame> dispatcher) {

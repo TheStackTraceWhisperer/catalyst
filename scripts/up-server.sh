@@ -33,4 +33,4 @@ fi
 echo "[server] db=${FFXI_DB_URL} user=${FFXI_DB_USER}"
 java -cp "${SERVER_JAR}:${ROOT_DIR}/ffxi-server/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.ffxi.server.ServerMain
+     catalyst.ffxi.server.ServerApplication

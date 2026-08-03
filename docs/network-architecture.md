@@ -2,13 +2,15 @@
 
 ## Overview
 
-This document describes the complete network architecture for the FFXI Java project, covering the production server topology, client connection lifecycle, message routing, and phase transitions. PlantUML diagrams are included for each major concept.
+This document describes the complete network architecture for the FFXI Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
 
-This architecture is a deliberate divergence from LandSandBoat (see D-007 in `lsb-divergence.md`). LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services.
+This architecture is a deliberate divergence from LandSandBoat (see D-007 in `lsb-divergence.md`). LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
 
 ---
 
 ## 1. Production Topology
+
+All communication — client-facing and internal — uses QUIC over UDP. External traffic terminates at the gateway; internal services are unreachable from the internet.
 
 ```plantuml
 @startuml topology
@@ -25,8 +27,8 @@ rectangle "DMZ" {
 }
 
 rectangle "Private Network" {
-  component [Login Service\n(internal)] as LOGIN
-  component [Lobby Service\n(internal)] as LOBBY
+  component [Login Service\n(QUIC internal)] as LOGIN
+  component [Lobby Service\n(QUIC internal)] as LOBBY
   database [PostgreSQL\n(accounts, characters)] as DB
   rectangle "World Cluster" {
     component [World Server A\n(zones 1-100)] as WA
@@ -36,10 +38,10 @@ rectangle "Private Network" {
 }
 
 Client -right-> GW : QUIC / TLS 1.3\nUDP :35555
-GW -right-> LOGIN : gRPC (internal)
-GW -right-> LOBBY : gRPC (internal)
-GW -down-> WA : gRPC (internal)
-GW -down-> WB : gRPC (internal)
+GW -right-> LOGIN : QUIC / mTLS\n(internal)
+GW -right-> LOBBY : QUIC / mTLS\n(internal)
+GW -down-> WA : QUIC / mTLS\n(internal)
+GW -down-> WB : QUIC / mTLS\n(internal)
 LOGIN -down-> DB
 LOBBY -down-> DB
 WA -right-> WS
@@ -49,15 +51,86 @@ WB -right-> WS
 
 **Key properties:**
 - The client has **one address** for its entire session lifetime.
-- All backend services are unreachable from the internet.
+- All backend services are unreachable from the internet — the gateway is the sole public endpoint.
+- Internal communication uses the same `MessageFrame`/`WireCodec` stack as the client transport; no second protocol stack.
 - The gateway maintains a routing table mapping `sessionId → world server` after `PLAY`.
 - World servers can be added or restarted without the client noticing.
 
 ---
 
-## 2. Current State (Milestone 1)
+## 2. Internal Trust Model
 
-The milestone 1 single-server deployment collapses everything into one process for simplicity. The internal architecture is already split logically; the gateway split is additive.
+### Classic problem (LSB-era)
+In retail FFXI and LSB, login and world servers shared a flat network. A world server connecting to the login server had to prove it was legitimate (server registry, shared secrets, connection keys). A spoofed external client could attempt to impersonate a world server.
+
+### Why the gateway eliminates this problem
+
+The gateway is the **only** service with a public address. Network-level enforcement (firewall rules, k8s NetworkPolicy) ensures:
+
+1. Internet → gateway only
+2. Gateway → backend services only (private CIDR)
+3. Backend services cannot be reached from the internet regardless of what code they run
+
+External spoofing of internal sources becomes physically impossible — there is no path from the internet to Login, Lobby, or World. The classic server registry and per-packet source validation are not needed.
+
+### What mTLS adds on the private network
+
+Even inside the private network, mutual TLS (mTLS) ensures that a compromised service cannot impersonate another. The threat model shifts from "external actor spoofing internal source" to "lateral movement from a compromised pod":
+
+```plantuml
+@startuml trust
+!theme plain
+skinparam defaultFontSize 13
+skinparam linetype ortho
+
+rectangle "Certificate Authority\n(internal, cert-manager or static)" as CA
+
+rectangle "Gateway" as GW #LightBlue
+rectangle "Login Service" as LS #LightGreen
+rectangle "Lobby Service" as LBS #LightGreen
+rectangle "World Server" as WS #LightYellow
+rectangle "PostgreSQL" as DB #LightCoral
+
+CA -down-> GW : issues cert\n(trusted by Login, Lobby, World)
+CA -down-> LS : issues cert\n(trusted by Gateway, DB only)
+CA -down-> LBS : issues cert\n(trusted by Gateway, DB, World Registry)
+CA -down-> WS : issues cert\n(trusted by Gateway, World State DB only)
+
+GW -right-> LS : mTLS (GW cert accepted)
+GW -right-> LBS : mTLS (GW cert accepted)
+GW -down-> WS : mTLS (GW cert accepted)
+LS -down-> DB : mTLS (accounts table)
+LBS -down-> DB : mTLS (characters table)
+WS -down-> DB : mTLS (world state only)
+@enduml
+```
+
+### Least-privilege access matrix
+
+| Service | Can reach | Cannot reach |
+|---|---|---|
+| Gateway | Login, Lobby, World (any) | PostgreSQL directly |
+| Login | PostgreSQL (accounts) | Lobby, World, World State DB |
+| Lobby | PostgreSQL (characters), World Registry | Login directly, World State DB |
+| World | World State DB | Login, Lobby, accounts/characters DB |
+
+### Auth token validation: once at the gateway
+
+Auth tokens are validated **once** at the gateway before forwarding. Backend services trust that any inbound QUIC connection arrived from the gateway (enforced by network position + mTLS cert), and do not re-validate tokens. This eliminates the classic FFXI pattern of each server maintaining its own session verification chain.
+
+### Production cert management options
+
+| Environment | Approach |
+|---|---|
+| Dev / single-node | Self-signed cert generated at startup (current) |
+| Docker Compose / bare metal | Static internal CA, certs baked into service containers at deploy |
+| Kubernetes | cert-manager with a `ClusterIssuer`; automatic rotation, no manual cert lifecycle |
+
+---
+
+## 3. Current State (Milestone 1)
+
+The milestone 1 single-server deployment collapses everything into one process. The gateway split is additive — the internal architecture is already logically separated.
 
 ```plantuml
 @startuml milestone1
@@ -74,9 +147,9 @@ rectangle "Single Process (ServerMain)" {
   database [PostgreSQL] as DB
 }
 
-Client --> LH : LOGIN
-Client --> CH : CHAR_LIST\nCHAR_CREATE\nCHAR_SELECT\nCHAR_DELETE
-Client --> SH : PLAY\nPING\nLOGOUT
+Client --> LH : QUIC — LOGIN
+Client --> CH : QUIC — CHAR_LIST\nCHAR_CREATE\nCHAR_SELECT\nCHAR_DELETE
+Client --> SH : QUIC — PLAY\nPING\nLOGOUT
 LH --> DB
 CH --> DB
 SH --> DB
@@ -86,7 +159,7 @@ SH --> ZT
 
 ---
 
-## 3. Target Multi-Server Topology
+## 4. Target Multi-Server Topology
 
 ```plantuml
 @startuml multiserver
@@ -97,7 +170,7 @@ skinparam linetype polyline
 actor Client
 
 rectangle "ffxi-gateway" as GW {
-  component [QUIC Listener] as QL
+  component [QUIC Listener\n(external)] as QL
   component [Auth Token Validator] as ATV
   component [Phase Router] as PR
   component [Session Route Table\nsessionId → WorldServer] as RT
@@ -109,7 +182,7 @@ rectangle "ffxi-login" as LS {
 
 rectangle "ffxi-lobby" as LBS {
   component [Character Handler] as CH
-  component [World Selector] as WS
+  component [World Selector] as WSel
 }
 
 rectangle "ffxi-world (A)" as WA {
@@ -127,15 +200,15 @@ rectangle "ffxi-world (B)" as WB {
 database "PostgreSQL\n(accounts, characters)" as DB
 database "World State\n(sessions, zones)" as WST
 
-Client --> QL : QUIC
+Client --> QL : QUIC / TLS 1.3
 QL --> ATV
 ATV --> PR
-PR --> LH : LOGIN
-PR --> CH : CHAR_*
-CH --> WS : on PLAY
-WS --> RT : assign world
-PR --> SHA : PING / LOGOUT\n(world A sessions)
-PR --> SHB : PING / LOGOUT\n(world B sessions)
+PR --> LH : QUIC / mTLS — LOGIN
+PR --> CH : QUIC / mTLS — CHAR_*
+CH --> WSel : on PLAY
+WSel --> RT : assign world
+PR --> SHA : QUIC / mTLS — PING / LOGOUT\n(world A sessions)
+PR --> SHB : QUIC / mTLS — PING / LOGOUT\n(world B sessions)
 LH --> DB
 CH --> DB
 SHA --> WST
@@ -145,7 +218,7 @@ SHB --> WST
 
 ---
 
-## 4. Client Connection Lifecycle
+## 5. Client Connection Lifecycle
 
 ```plantuml
 @startuml lifecycle
@@ -159,29 +232,30 @@ participant "Lobby Service" as LBS
 participant "World Server" as WS
 
 == Authentication Phase ==
-C -> GW : QUIC connect (UDP)
+C -> GW : QUIC connect (UDP) + TLS 1.3
 GW --> C : TLS handshake complete
-C -> GW : LOGIN {username, password}
-GW -> LS : forward LOGIN
+C -> GW : stream(0): LOGIN {username, password}
+GW -> LS : QUIC/mTLS — LOGIN (authToken not yet issued)
 LS -> LS : Argon2id verify
 LS --> GW : LOGIN_OK {authToken, accountId}
 GW --> C : LOGIN_OK {authToken, accountId}
 
 == Character Selection Phase ==
-C -> GW : CHAR_LIST {authToken}
-GW -> LBS : forward CHAR_LIST
+C -> GW : stream(1): CHAR_LIST {authToken}
+GW -> GW : validate authToken
+GW -> LBS : QUIC/mTLS — CHAR_LIST
 LBS --> GW : CHAR_LIST_OK {characters}
 GW --> C : CHAR_LIST_OK
 
-C -> GW : CHAR_SELECT {authToken, characterId}
-GW -> LBS : forward CHAR_SELECT
+C -> GW : stream(2): CHAR_SELECT {authToken, characterId}
+GW -> LBS : QUIC/mTLS — CHAR_SELECT
 LBS --> GW : CHAR_SELECT_OK {identity, position}
 GW --> C : CHAR_SELECT_OK
 
 == Play Phase ==
-C -> GW : PLAY {authToken, characterId}
-GW -> LBS : forward PLAY
-LBS -> WS : assign session
+C -> GW : stream(3): PLAY {authToken, characterId}
+GW -> LBS : QUIC/mTLS — PLAY
+LBS -> WS : QUIC/mTLS — assign_session
 WS --> LBS : session created
 LBS --> GW : PLAY_OK {sessionId, zoneId, position}
 GW -> GW : store sessionId → WorldServer(A)
@@ -189,15 +263,16 @@ GW --> C : PLAY_OK {sessionId, zoneId}
 
 == Active Session ==
 loop every 5s
-  C -> GW : PING {sessionId}
-  GW -> WS : forward PING (via route table)
+  C -> GW : stream(N): PING {sessionId}
+  GW -> GW : lookup sessionId → WorldServer(A)
+  GW -> WS : QUIC/mTLS — PING
   WS --> GW : PONG
   GW --> C : PONG
 end
 
 == Logout ==
-C -> GW : LOGOUT {sessionId}
-GW -> WS : forward LOGOUT
+C -> GW : stream(M): LOGOUT {sessionId}
+GW -> WS : QUIC/mTLS — LOGOUT
 WS --> GW : BYE
 GW -> GW : remove sessionId from route table
 GW --> C : BYE
@@ -206,9 +281,9 @@ GW --> C : BYE
 
 ---
 
-## 5. Message Routing Table
+## 6. Message Routing Table
 
-The gateway holds an in-memory routing table updated at `PLAY` and cleared at `LOGOUT` or session timeout.
+The gateway validates the auth token on every pre-session request, then routes by message type. Post-`PLAY`, session messages are routed by `sessionId` lookup.
 
 ```plantuml
 @startuml routing
@@ -216,17 +291,20 @@ The gateway holds an in-memory routing table updated at `PLAY` and cleared at `L
 skinparam defaultFontSize 13
 skinparam linetype ortho
 
-rectangle "Gateway Route Table" {
-  map "phaseRouter" {
+rectangle "Gateway Phase Router" {
+  map "static routes (by message type)" {
     LOGIN => Login Service
     CHAR_LIST => Lobby Service
     CHAR_CREATE => Lobby Service
     CHAR_SELECT => Lobby Service
     CHAR_DELETE => Lobby Service
     PLAY => Lobby Service
-    PING => World Server (lookup by sessionId)
-    LOGOUT => World Server (lookup by sessionId)
-    ZONE_CHANGE => World Server (lookup by sessionId)
+  }
+  map "session routes (by sessionId lookup)" {
+    PING => World Server (route table)
+    LOGOUT => World Server (route table)
+    ZONE_CHANGE => World Server (route table)
+    ENTITY_UPDATE => World Server (route table)
   }
 }
 @enduml
@@ -234,44 +312,51 @@ rectangle "Gateway Route Table" {
 
 ---
 
-## 6. QUIC Stream Model
+## 7. QUIC Stream Model
 
-Each logical request/response pair uses a **dedicated bidirectional QUIC stream** on a persistent connection. The connection is maintained for the full session; streams are cheap to open and close.
+Each logical request/response pair uses a **dedicated bidirectional QUIC stream** on a persistent connection. The same model applies on both the external (client ↔ gateway) and internal (gateway ↔ service) connections.
 
 ```plantuml
 @startuml quic_streams
 !theme plain
 skinparam defaultFontSize 13
 
-rectangle "QUIC Connection (persistent, Client ↔ Gateway)" {
+rectangle "External QUIC Connection (persistent, Client ↔ Gateway)" {
   rectangle "stream 0" {
     component "LOGIN →\n← LOGIN_OK"
   }
   rectangle "stream 1" {
     component "CHAR_LIST →\n← CHAR_LIST_OK"
   }
-  rectangle "stream 2" {
-    component "CHAR_SELECT →\n← CHAR_SELECT_OK"
+  rectangle "stream 2..N" {
+    component "CHAR_SELECT / PLAY /\nPING / LOGOUT / ..."
   }
-  rectangle "stream 3" {
-    component "PLAY →\n← PLAY_OK"
+}
+
+rectangle "Internal QUIC Connection (persistent, Gateway ↔ World Server A)" {
+  rectangle "stream 0 " {
+    component "PING →\n← PONG"
   }
-  rectangle "stream 4..N" {
-    component "PING →\n← PONG\n(repeated)"
+  rectangle "stream 1 " {
+    component "LOGOUT →\n← BYE"
+  }
+  rectangle "stream 2..N " {
+    component "ZONE_CHANGE /\nENTITY_UPDATE / ..."
   }
 }
 @enduml
 ```
 
 **Properties:**
-- Client (`QuicGateway`) opens one stream per request, writes the request, shuts down output.
-- Server reads the request, writes the response, shuts down output.
-- Client reads the response on `channelRead` newline detection, completes the `CompletableFuture`.
-- Stream fully closes; `QuicChannel` connection persists.
+- One stream per request/response pair — streams are cheap, connections are valuable.
+- Client opens a stream, writes request, shuts down output (half-close).
+- Receiver writes response, shuts down output.
+- Client completes `CompletableFuture` on newline detection in `channelRead`; stream closes.
+- `QuicChannel` connection persists across all requests.
 
 ---
 
-## 7. World Server Zone Assignment
+## 8. World Server Zone Assignment
 
 ```plantuml
 @startuml zone_assign
@@ -284,8 +369,8 @@ participant "World Server A\n(zones 1-100)" as WA
 participant "World Server B\n(zones 101-200)" as WB
 
 L -> WR : lookup(zoneId=230)
-WR --> L : WorldServer A
-L -> WA : assign_session(accountId, characterId, zoneId=230)
+WR --> L : WorldServer A (QUIC addr)
+L -> WA : QUIC/mTLS — assign_session\n(accountId, characterId, zoneId=230)
 WA -> WA : joinZone(sessionId, 230)
 WA --> L : PLAY_OK {sessionId}
 L --> L : auth ticket consumed
@@ -294,27 +379,29 @@ L --> L : auth ticket consumed
 
 ---
 
-## 8. Module Breakdown (Target)
+## 9. Module Breakdown (Target)
 
-| Module | Responsibility | Transport |
-|---|---|---|
-| `ffxi-gateway` | Client-facing QUIC endpoint, TLS, auth token validation, phase routing, session→world route table | QUIC (external), gRPC (internal) |
-| `ffxi-login` | Account auth (Argon2id), auth token issuance | gRPC |
-| `ffxi-lobby` | Character CRUD, soft delete, race/job/nation validation, world server assignment on PLAY | gRPC |
-| `ffxi-world` | Session lifecycle, zone management, entity tracking, keepalive, movement | gRPC |
-| `ffxi-common` | Shared wire codec (`MessageFrame`, `WireCodec`), domain models (`CharacterIdentity`, `RuntimeMode`) | — |
-| `ffxi-client` | LWJGL + Dear ImGui desktop client, QUIC transport (`QuicGateway`), all UI phases | QUIC |
+| Module | Responsibility | External Transport | Internal Transport |
+|---|---|---|---|
+| `ffxi-gateway` | Client-facing QUIC endpoint, TLS termination, auth token validation, phase routing, session→world route table | QUIC / TLS 1.3 | QUIC / mTLS |
+| `ffxi-login` | Account auth (Argon2id), auth token issuance | — | QUIC / mTLS |
+| `ffxi-lobby` | Character CRUD, soft delete, race/job/nation validation, world server assignment on PLAY | — | QUIC / mTLS |
+| `ffxi-world` | Session lifecycle, zone management, entity tracking, keepalive, movement | — | QUIC / mTLS |
+| `ffxi-common` | Shared wire codec (`MessageFrame`, `WireCodec`), domain models | — | — |
+| `ffxi-client` | LWJGL + Dear ImGui desktop client, `QuicGateway` transport | QUIC / TLS 1.3 | — |
 
 ---
 
-## 9. Current vs Target
+## 10. Current vs Target
 
 | Concern | Milestone 1 (now) | Target |
 |---|---|---|
 | Client endpoint | Single `ServerMain` on UDP :35555 | `ffxi-gateway` on UDP :35555 |
+| Internal comms | N/A (single process) | QUIC / mTLS between gateway and services |
 | Auth | In `ServerMain` | `ffxi-login` service |
+| Auth token validation | In `ServerMain` | Once at gateway; not repeated by backend |
 | Character ops | In `ServerMain` | `ffxi-lobby` service |
 | Session/world | In `ServerMain` | `ffxi-world` service(s) |
-| Internal comms | N/A (single process) | gRPC between gateway and services |
-| World scale | Single in-memory map | Multiple `ffxi-world` instances, registry |
-| DB | Single PostgreSQL | Shared accounts/chars DB + world state DB |
+| Server-to-server auth | N/A | mTLS pinned certs (dev) / cert-manager (k8s) |
+| World scale | Single in-memory map | Multiple `ffxi-world` instances + world registry |
+| DB | Single PostgreSQL | Accounts/chars DB + world state DB |

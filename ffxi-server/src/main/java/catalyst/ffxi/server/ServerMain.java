@@ -2,31 +2,23 @@ package catalyst.ffxi.server;
 
 import catalyst.ffxi.common.model.CharacterIdentity;
 import catalyst.ffxi.common.net.MessageFrame;
-import catalyst.ffxi.common.net.WireCodec;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 import de.mkammerer.argon2.Argon2;
 import de.mkammerer.argon2.Argon2Factory;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
-import java.net.ServerSocket;
-import java.net.Socket;
-import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Duration;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Random;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
@@ -43,22 +35,45 @@ public final class ServerMain {
     private static final int ARGON2_MEMORY_KIB = 65_536;
     private static final int ARGON2_PARALLELISM = 1;
 
-    private static final Map<String, CharacterStartLocation> STARTING_CITIES = Map.of(
-        "BASTOK", new CharacterStartLocation(234, -39.0f, 0.0f, -58.0f, 0.0f),
-        "SANDORIA", new CharacterStartLocation(230, 10.0f, 0.0f, -75.0f, 0.0f),
-        "WINDURST", new CharacterStartLocation(238, -55.0f, 0.0f, 71.0f, 0.0f)
+    // LSB race encoding: 1=HumeM 2=HumeF 3=ElvaanM 4=ElvaanF 5=TaruM 6=TaruF 7=Mithra 8=Galka
+    // minSize/maxSize: Tarutaru forced small (0), Galka forced large (2), others 0-2
+    private static final Map<Integer, RaceRule> RACE_RULES = Map.of(
+        1, new RaceRule("Hume Male",       0, 2),
+        2, new RaceRule("Hume Female",     0, 2),
+        3, new RaceRule("Elvaan Male",     0, 2),
+        4, new RaceRule("Elvaan Female",   0, 2),
+        5, new RaceRule("Tarutaru Male",   0, 0),
+        6, new RaceRule("Tarutaru Female", 0, 0),
+        7, new RaceRule("Mithra",          0, 2),
+        8, new RaceRule("Galka",           2, 2)
     );
-    private static final Map<String, RaceRule> RACE_RULES = Map.of(
-        "HUME", new RaceRule((short) 1, true, true),
-        "ELVAAN", new RaceRule((short) 2, true, true),
-        "TARUTARU", new RaceRule((short) 3, true, true),
-        "MITHRA", new RaceRule((short) 4, false, true),
-        "GALKA", new RaceRule((short) 5, true, false)
+
+    // Zones by nation: 0=San d'Oria, 1=Bastok, 2=Windurst
+    private static final List<List<ZoneSpawn>> NATION_ZONES = List.of(
+        List.of( // 0 = San d'Oria
+            new ZoneSpawn(230, -64.0f, -1.0f,  209.0f, 0),   // Southern San d'Oria
+            new ZoneSpawn(231, -32.0f,  0.0f,  -20.0f, 0),   // Northern San d'Oria
+            new ZoneSpawn(232,  43.0f,  0.0f,   -9.0f, 0)    // Port San d'Oria
+        ),
+        List.of( // 1 = Bastok
+            new ZoneSpawn(234,  39.0f,  0.0f,   58.0f, 0),   // Bastok Mines
+            new ZoneSpawn(235,  27.0f,  0.0f,  -24.0f, 0),   // Bastok Markets
+            new ZoneSpawn(233, -29.0f, -1.0f,    5.0f, 0)    // Port Bastok
+        ),
+        List.of( // 2 = Windurst
+            new ZoneSpawn(238, -55.0f,  0.0f,   71.0f, 0),   // Windurst Waters
+            new ZoneSpawn(239,  -6.0f,  0.0f,   37.0f, 0),   // Port Windurst
+            new ZoneSpawn(240, -95.0f, -1.0f,   40.0f, 0)    // Windurst Woods
+        )
     );
+
+    // Starting jobs: WAR=1 MNK=2 WHM=3 BLM=4 RDM=5 THF=6
+    private static final int MIN_STARTING_JOB = 1;
+    private static final int MAX_STARTING_JOB = 6;
 
     private final int port;
     private final HikariDataSource dataSource;
-    private final ExecutorService clientExecutor = Executors.newCachedThreadPool();
+    private final Random rng = new Random();
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private final ConcurrentHashMap<String, AuthTicket> authTickets = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Integer> sessionZones = new ConcurrentHashMap<>();
@@ -77,56 +92,37 @@ public final class ServerMain {
 
         ServerMain server = new ServerMain(port, jdbcUrl, jdbcUser, jdbcPassword);
         server.initDatabase();
-        server.logQuicStatus();
         server.start();
     }
 
-    private void start() throws IOException {
+    private void start() throws Exception {
         scheduler.scheduleAtFixedRate(this::cleanupSessions, 10, 10, TimeUnit.SECONDS);
         scheduler.scheduleAtFixedRate(this::cleanupAuthTickets, 10, 10, TimeUnit.SECONDS);
 
-        try (ServerSocket serverSocket = new ServerSocket(port)) {
-            LOGGER.info("FFXI minimal server listening on port {}", port);
-            while (true) {
-                Socket socket = serverSocket.accept();
-                clientExecutor.submit(() -> handleClient(socket));
-            }
+        QuicServerTransport quicServer = new QuicServerTransport(port, this::dispatch);
+        try {
+            quicServer.start();
+            LOGGER.info("FFXI server listening on UDP port {} (QUIC)", port);
+            quicServer.awaitShutdown();
         } finally {
+            quicServer.stop();
             scheduler.shutdownNow();
-            clientExecutor.shutdownNow();
             dataSource.close();
         }
     }
 
-    private void handleClient(Socket socket) {
-        try (socket;
-             BufferedReader in = new BufferedReader(new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-             BufferedWriter out = new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8))) {
-
-            String line = in.readLine();
-            if (line == null || line.isBlank()) {
-                return;
-            }
-
-            MessageFrame request = WireCodec.decode(line);
-            MessageFrame response = switch (request.type()) {
-                case "LOGIN" -> handleLogin(request);
-                case "CHAR_LIST" -> handleCharacterList(request);
-                case "CHAR_CREATE" -> handleCharacterCreate(request);
-                case "CHAR_DELETE" -> handleCharacterDelete(request);
-                case "CHAR_SELECT" -> handleCharacterSelect(request);
-                case "PLAY" -> handlePlay(request);
-                case "PING" -> handlePing(request);
-                case "LOGOUT" -> handleLogout(request);
-                default -> error("UNKNOWN_REQUEST", "Unsupported message type: " + request.type());
-            };
-
-            out.write(WireCodec.encode(response.type(), response.fields()));
-            out.newLine();
-            out.flush();
-        } catch (Exception e) {
-            LOGGER.error("Client handling failed", e);
-        }
+    MessageFrame dispatch(MessageFrame request) {
+        return switch (request.type()) {
+            case "LOGIN"       -> handleLogin(request);
+            case "CHAR_LIST"   -> handleCharacterList(request);
+            case "CHAR_CREATE" -> handleCharacterCreate(request);
+            case "CHAR_DELETE" -> handleCharacterDelete(request);
+            case "CHAR_SELECT" -> handleCharacterSelect(request);
+            case "PLAY"        -> handlePlay(request);
+            case "PING"        -> handlePing(request);
+            case "LOGOUT"      -> handleLogout(request);
+            default            -> error("UNKNOWN_REQUEST", "Unsupported message type: " + request.type());
+        };
     }
 
     private MessageFrame handleLogin(MessageFrame frame) {
@@ -145,7 +141,6 @@ public final class ServerMain {
                     LOGGER.info("LOGIN_ERR user={} reason=account_not_found", username);
                     return loginError("INVALID_CREDENTIALS", "Invalid username or password");
                 }
-
                 long accountId = rs.getLong("id");
                 String passwordHash = rs.getString("password_hash");
                 String status = rs.getString("status");
@@ -153,26 +148,20 @@ public final class ServerMain {
                     LOGGER.info("LOGIN_ERR user={} account={} reason=account_not_active status={}", username, accountId, status);
                     return loginError("ACCOUNT_DISABLED", "Account is not active");
                 }
-
                 Argon2 argon2 = Argon2Factory.create();
-                boolean passwordValid = argon2.verify(passwordHash, password.toCharArray());
-                if (!passwordValid) {
+                if (!argon2.verify(passwordHash, password.toCharArray())) {
                     LOGGER.info("LOGIN_ERR user={} account={} reason=bad_password", username, accountId);
                     return loginError("INVALID_CREDENTIALS", "Invalid username or password");
                 }
-
                 String authToken = UUID.randomUUID().toString();
                 long expiresAtMs = System.currentTimeMillis() + Duration.ofSeconds(AUTH_TICKET_TIMEOUT_SECONDS).toMillis();
                 authTickets.put(authToken, new AuthTicket(accountId, expiresAtMs));
-                LOGGER.info("LOGIN_OK user={} account={} authToken={} expiresInSeconds={}",
-                    username, accountId, authToken, AUTH_TICKET_TIMEOUT_SECONDS);
-
-                Map<String, String> fields = new LinkedHashMap<>();
-                fields.put("code", "OK");
-                fields.put("message", "Authenticated");
-                fields.put("authToken", authToken);
-                fields.put("accountId", Long.toString(accountId));
-                return new MessageFrame("LOGIN_OK", fields);
+                LOGGER.info("LOGIN_OK user={} account={}", username, accountId);
+                return new MessageFrame("LOGIN_OK", Map.of(
+                    "code", "OK",
+                    "message", "Authenticated",
+                    "authToken", authToken,
+                    "accountId", Long.toString(accountId)));
             }
         } catch (SQLException e) {
             LOGGER.error("LOGIN_ERR user={} reason=db_error", username, e);
@@ -185,10 +174,9 @@ public final class ServerMain {
         if (accountId == null) {
             return error("UNAUTHORIZED", "Invalid or expired auth token");
         }
-
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                 SELECT id, name, race, gender, face, starting_city, current_zone_id
+                 SELECT id, name, race, size, face, main_job, nation, current_zone_id
                  FROM characters
                  WHERE account_id = ? AND deleted_at IS NULL
                  ORDER BY id
@@ -198,15 +186,17 @@ public final class ServerMain {
                 Map<String, String> fields = new LinkedHashMap<>();
                 int index = 0;
                 while (rs.next()) {
-                    fields.put("char" + index + "_id", Long.toString(rs.getLong("id")));
-                    fields.put("char" + index + "_name", rs.getString("name"));
                     int raceId = rs.getInt("race");
-                    fields.put("char" + index + "_race", Integer.toString(raceId));
-                    fields.put("char" + index + "_raceName", raceNameForId(raceId));
-                    fields.put("char" + index + "_gender", normalizeGender(rs.getString("gender")));
-                    fields.put("char" + index + "_face", Integer.toString(rs.getInt("face")));
-                    fields.put("char" + index + "_city", rs.getString("starting_city"));
-                    fields.put("char" + index + "_zone", Integer.toString(rs.getInt("current_zone_id")));
+                    fields.put("char" + index + "_id",       Long.toString(rs.getLong("id")));
+                    fields.put("char" + index + "_name",     rs.getString("name"));
+                    fields.put("char" + index + "_race",     Integer.toString(raceId));
+                    fields.put("char" + index + "_raceName", raceNameFor(raceId));
+                    fields.put("char" + index + "_size",     Integer.toString(rs.getInt("size")));
+                    fields.put("char" + index + "_face",     Integer.toString(rs.getInt("face")));
+                    fields.put("char" + index + "_mainJob",  Integer.toString(rs.getInt("main_job")));
+                    fields.put("char" + index + "_jobName",  jobNameFor(rs.getInt("main_job")));
+                    fields.put("char" + index + "_nation",   Integer.toString(rs.getInt("nation")));
+                    fields.put("char" + index + "_zone",     Integer.toString(rs.getInt("current_zone_id")));
                     index++;
                 }
                 fields.put("count", Integer.toString(index));
@@ -214,7 +204,7 @@ public final class ServerMain {
                 return new MessageFrame("CHAR_LIST_OK", fields);
             }
         } catch (SQLException e) {
-            LOGGER.error("CHAR_LIST_ERR account={} reason=db_error", accountId, e);
+            LOGGER.error("CHAR_LIST_ERR account={}", accountId, e);
             return error("SERVER_ERROR", "Failed to load characters");
         }
     }
@@ -225,76 +215,87 @@ public final class ServerMain {
             return error("UNAUTHORIZED", "Invalid or expired auth token");
         }
 
-        String name = normalize(frame.get("name"));
-        String raceName = normalize(frame.get("race")).toUpperCase(Locale.ROOT);
-        RaceRule raceRule = RACE_RULES.get(raceName);
-        String gender = parseGenderForCreate(frame.get("gender"));
-        int face = parseInt(frame.get("face"), -1);
-        String city = normalize(frame.get("city")).toUpperCase(Locale.ROOT);
+        String name    = normalize(frame.get("name"));
+        int race       = parseInt(frame.get("race"), -1);
+        int size       = parseInt(frame.get("size"), -1);
+        int face       = parseInt(frame.get("face"), -1);
+        int mainJob    = parseInt(frame.get("mainJob"), -1);
+        int nation     = parseInt(frame.get("nation"), -1);
 
         if (!CHARACTER_NAME_PATTERN.matcher(name).matches()) {
             return error("INVALID_NAME", "Character name must be 3-15 letters (A-Z)");
         }
+
+        RaceRule raceRule = RACE_RULES.get(race);
         if (raceRule == null) {
-            return error("INVALID_RACE", "Race must be HUME, ELVAAN, TARUTARU, MITHRA, or GALKA");
+            return error("INVALID_RACE", "Race must be 1-8 (see LSB encoding)");
         }
-        if (gender == null) {
-            return error("INVALID_GENDER", "Gender must be M or F");
+        if (size < raceRule.minSize() || size > raceRule.maxSize()) {
+            return error("INVALID_SIZE",
+                "Size for " + raceRule.name() + " must be " + raceRule.minSize() + ".." + raceRule.maxSize());
         }
-        if (!raceRule.allows(gender)) {
-            return error("INVALID_GENDER", raceName + " does not support gender " + gender);
+        if (face < 0 || face > 15) {
+            return error("INVALID_FACE", "Face must be 0-15");
         }
-        if (face < 1 || face > 8) {
-            return error("INVALID_FACE", "Face must be in range 1..8");
+        // LSB clamps starting job to 1-6
+        if (mainJob < MIN_STARTING_JOB || mainJob > MAX_STARTING_JOB) {
+            mainJob = Math.clamp(mainJob, MIN_STARTING_JOB, MAX_STARTING_JOB);
         }
-        CharacterStartLocation location = STARTING_CITIES.get(city);
-        if (location == null) {
-            return error("INVALID_STARTING_CITY", "Starting city must be BASTOK, SANDORIA, or WINDURST");
+        if (nation < 0 || nation > 2) {
+            return error("INVALID_NATION", "Nation must be 0 (Sandy), 1 (Bastok), or 2 (Windurst)");
         }
 
-        try (Connection connection = dataSource.getConnection();
-             PreparedStatement statement = connection.prepareStatement("""
-                 INSERT INTO characters (
-                   account_id, name, race, gender, face, starting_city, home_zone_id, home_x, home_y, home_z, home_rot,
-                   current_zone_id, current_x, current_y, current_z, current_rot
-                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                 RETURNING id
-                 """)) {
-            statement.setLong(1, accountId);
-            statement.setString(2, name);
-            statement.setShort(3, raceRule.id());
-            statement.setString(4, gender);
-            statement.setInt(5, face);
-            statement.setString(6, city);
-            statement.setInt(7, location.zoneId());
-            statement.setFloat(8, location.x());
-            statement.setFloat(9, location.y());
-            statement.setFloat(10, location.z());
-            statement.setFloat(11, location.rot());
-            statement.setInt(12, location.zoneId());
-            statement.setFloat(13, location.x());
-            statement.setFloat(14, location.y());
-            statement.setFloat(15, location.z());
-            statement.setFloat(16, location.rot());
+        ZoneSpawn spawn = NATION_ZONES.get(nation).get(rng.nextInt(3));
 
-            try (ResultSet rs = statement.executeQuery()) {
-                if (!rs.next()) {
-                    return error("SERVER_ERROR", "Failed to create character");
+        try (Connection connection = dataSource.getConnection()) {
+            long characterId;
+            try (PreparedStatement statement = connection.prepareStatement("""
+                INSERT INTO characters (
+                  account_id, name, race, size, face, main_job, nation,
+                  home_zone_id, home_x, home_y, home_z, home_rot,
+                  current_zone_id, current_x, current_y, current_z, current_rot
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                RETURNING id
+                """)) {
+                statement.setLong(1, accountId);
+                statement.setString(2, name);
+                statement.setInt(3, race);
+                statement.setInt(4, size);
+                statement.setInt(5, face);
+                statement.setInt(6, mainJob);
+                statement.setInt(7, nation);
+                statement.setInt(8, spawn.zoneId());
+                statement.setFloat(9, spawn.x());
+                statement.setFloat(10, spawn.y());
+                statement.setFloat(11, spawn.z());
+                statement.setFloat(12, spawn.rot());
+                statement.setInt(13, spawn.zoneId());
+                statement.setFloat(14, spawn.x());
+                statement.setFloat(15, spawn.y());
+                statement.setFloat(16, spawn.z());
+                statement.setFloat(17, spawn.rot());
+                try (ResultSet rs = statement.executeQuery()) {
+                    if (!rs.next()) {
+                        return error("SERVER_ERROR", "Failed to create character");
+                    }
+                    characterId = rs.getLong("id");
                 }
-                long characterId = rs.getLong("id");
-                LOGGER.info("CHAR_CREATE_OK account={} characterId={} name={} race={} gender={} face={} city={}",
-                    accountId, characterId, name, raceName, gender, face, city);
+            } catch (SQLException e) {
+                if ("23505".equals(e.getSQLState())) {
+                    LOGGER.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
+                    return error("NAME_ALREADY_TAKEN", "Character name is already in use");
+                }
+                throw e;
+            }
 
-                Map<String, String> fields = new LinkedHashMap<>();
-                fields.put("characterId", Long.toString(characterId));
-                fields.put("name", name);
-                return new MessageFrame("CHAR_CREATE_OK", fields);
-            }
+            insertCharacterJobs(connection, characterId, mainJob);
+
+            LOGGER.info("CHAR_CREATE_OK account={} characterId={} name={} race={} size={} face={} job={} nation={} zone={}",
+                accountId, characterId, name, race, size, face, mainJob, nation, spawn.zoneId());
+            return new MessageFrame("CHAR_CREATE_OK", Map.of(
+                "characterId", Long.toString(characterId),
+                "name", name));
         } catch (SQLException e) {
-            if ("23505".equals(e.getSQLState())) {
-                LOGGER.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
-                return error("NAME_ALREADY_TAKEN", "Character name is already in use");
-            }
             LOGGER.error("CHAR_CREATE_ERR account={} reason=db_error", accountId, e);
             return error("SERVER_ERROR", "Failed to create character");
         }
@@ -305,39 +306,34 @@ public final class ServerMain {
         if (accountId == null) {
             return error("UNAUTHORIZED", "Invalid or expired auth token");
         }
-
         long characterId = parseLong(frame.get("characterId"), -1L);
         if (characterId <= 0) {
             return error("INVALID_CHARACTER", "characterId is required");
         }
-
         try (Connection connection = dataSource.getConnection()) {
-            try (PreparedStatement activeSessionCheck = connection.prepareStatement(
+            try (PreparedStatement check = connection.prepareStatement(
                 "SELECT 1 FROM accounts_sessions WHERE character_id = ? LIMIT 1")) {
-                activeSessionCheck.setLong(1, characterId);
-                try (ResultSet rs = activeSessionCheck.executeQuery()) {
+                check.setLong(1, characterId);
+                try (ResultSet rs = check.executeQuery()) {
                     if (rs.next()) {
                         return error("CHARACTER_ACTIVE", "Character is currently online");
                     }
                 }
             }
-
             try (PreparedStatement softDelete = connection.prepareStatement("""
-                UPDATE characters
-                SET deleted_at = NOW()
+                UPDATE characters SET deleted_at = NOW()
                 WHERE id = ? AND account_id = ? AND deleted_at IS NULL
                 """)) {
                 softDelete.setLong(1, characterId);
                 softDelete.setLong(2, accountId);
-                int updated = softDelete.executeUpdate();
-                if (updated == 0) {
+                if (softDelete.executeUpdate() == 0) {
                     return error("CHARACTER_NOT_FOUND", "Character not found");
                 }
             }
             LOGGER.info("CHAR_DELETE_OK account={} characterId={}", accountId, characterId);
             return new MessageFrame("CHAR_DELETE_OK", Map.of("characterId", Long.toString(characterId)));
         } catch (SQLException e) {
-            LOGGER.error("CHAR_DELETE_ERR account={} characterId={} reason=db_error", accountId, characterId, e);
+            LOGGER.error("CHAR_DELETE_ERR account={} characterId={}", accountId, characterId, e);
             return error("SERVER_ERROR", "Failed to delete character");
         }
     }
@@ -347,12 +343,10 @@ public final class ServerMain {
         if (accountId == null) {
             return error("UNAUTHORIZED", "Invalid or expired auth token");
         }
-
         long characterId = parseLong(frame.get("characterId"), -1L);
         if (characterId <= 0) {
             return error("INVALID_CHARACTER", "characterId is required");
         }
-
         try (Connection connection = dataSource.getConnection()) {
             if (hasActiveSession(connection, accountId)) {
                 return error("ALREADY_ONLINE", "Account is already online");
@@ -361,21 +355,19 @@ public final class ServerMain {
             if (identity == null) {
                 return error("CHARACTER_NOT_FOUND", "Character not found");
             }
-
             Map<String, String> fields = new LinkedHashMap<>();
-            fields.put("characterId", Long.toString(characterId));
+            fields.put("characterId",  Long.toString(characterId));
             fields.put("characterName", identity.name());
-            fields.put("homeZoneId", Integer.toString(identity.homeZoneId()));
+            fields.put("homeZoneId",   Integer.toString(identity.homeZoneId()));
             fields.put("currentZoneId", Integer.toString(identity.currentZoneId()));
-            fields.put("x", Float.toString(identity.currentX()));
-            fields.put("y", Float.toString(identity.currentY()));
-            fields.put("z", Float.toString(identity.currentZ()));
+            fields.put("x",   Float.toString(identity.currentX()));
+            fields.put("y",   Float.toString(identity.currentY()));
+            fields.put("z",   Float.toString(identity.currentZ()));
             fields.put("rot", Float.toString(identity.currentHeading()));
-            LOGGER.info("CHAR_SELECT_OK account={} characterId={} zone={} (ready_for_play)",
-                accountId, characterId, identity.currentZoneId());
+            LOGGER.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, characterId, identity.currentZoneId());
             return new MessageFrame("CHAR_SELECT_OK", fields);
         } catch (SQLException e) {
-            LOGGER.error("CHAR_SELECT_ERR account={} characterId={} reason=db_error", accountId, characterId, e);
+            LOGGER.error("CHAR_SELECT_ERR account={} characterId={}", accountId, characterId, e);
             return error("SERVER_ERROR", "Failed to load character");
         }
     }
@@ -385,18 +377,15 @@ public final class ServerMain {
         if (accountId == null) {
             return error("UNAUTHORIZED", "Invalid or expired auth token");
         }
-
         long characterId = parseLong(frame.get("characterId"), -1L);
         if (characterId <= 0) {
             return error("INVALID_CHARACTER", "characterId is required");
         }
-
         try (Connection connection = dataSource.getConnection()) {
             CharacterIdentity identity = loadCharacterIdentity(connection, accountId, characterId);
             if (identity == null) {
                 return error("CHARACTER_NOT_FOUND", "Character not found");
             }
-
             String sessionId = UUID.randomUUID().toString();
             try (PreparedStatement statement = connection.prepareStatement("""
                 INSERT INTO accounts_sessions (session_id, account_id, character_id, zone_id, last_seen_at)
@@ -414,26 +403,24 @@ public final class ServerMain {
                 }
                 throw e;
             }
-
             int playersInZone = joinZone(sessionId, identity.currentZoneId());
             Map<String, String> fields = new LinkedHashMap<>();
-            fields.put("sessionId", sessionId);
-            fields.put("accountId", Long.toString(accountId));
-            fields.put("characterId", Long.toString(characterId));
+            fields.put("sessionId",    sessionId);
+            fields.put("accountId",    Long.toString(accountId));
+            fields.put("characterId",  Long.toString(characterId));
             fields.put("characterName", identity.name());
-            fields.put("zoneId", Integer.toString(identity.currentZoneId()));
+            fields.put("zoneId",       Integer.toString(identity.currentZoneId()));
             fields.put("playersInZone", Integer.toString(playersInZone));
-            fields.put("homeZoneId", Integer.toString(identity.homeZoneId()));
-            fields.put("currentZoneId", Integer.toString(identity.currentZoneId()));
-            fields.put("x", Float.toString(identity.currentX()));
-            fields.put("y", Float.toString(identity.currentY()));
-            fields.put("z", Float.toString(identity.currentZ()));
+            fields.put("homeZoneId",   Integer.toString(identity.homeZoneId()));
+            fields.put("x",   Float.toString(identity.currentX()));
+            fields.put("y",   Float.toString(identity.currentY()));
+            fields.put("z",   Float.toString(identity.currentZ()));
             fields.put("rot", Float.toString(identity.currentHeading()));
             LOGGER.info("PLAY_OK account={} characterId={} session={} zone={} playersInZone={}",
                 accountId, characterId, sessionId, identity.currentZoneId(), playersInZone);
             return new MessageFrame("PLAY_OK", fields);
         } catch (SQLException e) {
-            LOGGER.error("PLAY_ERR account={} characterId={} reason=db_error", accountId, characterId, e);
+            LOGGER.error("PLAY_ERR account={} characterId={}", accountId, characterId, e);
             return error("SERVER_ERROR", "Failed to start session");
         }
     }
@@ -447,18 +434,16 @@ public final class ServerMain {
         if (sessionUuid == null) {
             return error("SESSION_NOT_FOUND", "Session not found");
         }
-
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                  "UPDATE accounts_sessions SET last_seen_at = NOW() WHERE session_id = ?")) {
             statement.setObject(1, sessionUuid);
-            int updated = statement.executeUpdate();
-            if (updated == 0) {
+            if (statement.executeUpdate() == 0) {
                 return error("SESSION_NOT_FOUND", "Session not found");
             }
             return new MessageFrame("PONG", Map.of("sessionId", sessionId));
         } catch (SQLException e) {
-            LOGGER.error("PING_ERR session={} reason=db_error", sessionId, e);
+            LOGGER.error("PING_ERR session={}", sessionId, e);
             return error("SERVER_ERROR", "Failed to update keepalive");
         }
     }
@@ -472,7 +457,6 @@ public final class ServerMain {
         if (sessionUuid == null) {
             return new MessageFrame("BYE", Map.of("sessionId", sessionId));
         }
-
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(
                  "DELETE FROM accounts_sessions WHERE session_id = ? RETURNING zone_id")) {
@@ -487,7 +471,7 @@ public final class ServerMain {
             LOGGER.info("LOGOUT session={}", sessionId);
             return new MessageFrame("BYE", Map.of("sessionId", sessionId));
         } catch (SQLException e) {
-            LOGGER.error("LOGOUT_ERR session={} reason=db_error", sessionId, e);
+            LOGGER.error("LOGOUT_ERR session={}", sessionId, e);
             return error("SERVER_ERROR", "Failed to close session");
         }
     }
@@ -495,10 +479,9 @@ public final class ServerMain {
     private void cleanupSessions() {
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement selectStale = connection.prepareStatement("""
-                 SELECT session_id, zone_id
-                 FROM accounts_sessions
-                 WHERE last_seen_at < NOW() - (? * INTERVAL '1 second')
-                 """)) {
+                SELECT session_id, zone_id FROM accounts_sessions
+                WHERE last_seen_at < NOW() - (? * INTERVAL '1 second')
+                """)) {
                 selectStale.setLong(1, SESSION_TIMEOUT_SECONDS);
                 try (ResultSet rs = selectStale.executeQuery()) {
                     while (rs.next()) {
@@ -506,16 +489,15 @@ public final class ServerMain {
                     }
                 }
             }
-
             try (PreparedStatement deleteStale = connection.prepareStatement("""
-                 DELETE FROM accounts_sessions
-                 WHERE last_seen_at < NOW() - (? * INTERVAL '1 second')
-                 """)) {
+                DELETE FROM accounts_sessions
+                WHERE last_seen_at < NOW() - (? * INTERVAL '1 second')
+                """)) {
                 deleteStale.setLong(1, SESSION_TIMEOUT_SECONDS);
                 int removed = deleteStale.executeUpdate();
-            if (removed > 0) {
-                LOGGER.info("SESSION_CLEANUP removed={} timeoutSeconds={}", removed, SESSION_TIMEOUT_SECONDS);
-            }
+                if (removed > 0) {
+                    LOGGER.info("SESSION_CLEANUP removed={}", removed);
+                }
             }
         } catch (SQLException e) {
             LOGGER.error("SESSION_CLEANUP_ERR", e);
@@ -555,19 +537,8 @@ public final class ServerMain {
 
     private CharacterIdentity loadCharacterIdentity(Connection connection, long accountId, long characterId) throws SQLException {
         try (PreparedStatement statement = connection.prepareStatement("""
-            SELECT
-              id,
-              name,
-              home_zone_id,
-              home_x,
-              home_y,
-              home_z,
-              home_rot,
-              current_zone_id,
-              current_x,
-              current_y,
-              current_z,
-              current_rot
+            SELECT id, name, home_zone_id, home_x, home_y, home_z, home_rot,
+                   current_zone_id, current_x, current_y, current_z, current_rot
             FROM characters
             WHERE id = ? AND account_id = ? AND deleted_at IS NULL
             """)) {
@@ -605,6 +576,19 @@ public final class ServerMain {
         }
     }
 
+    private void insertCharacterJobs(Connection connection, long characterId, int mainJob) throws SQLException {
+        try (PreparedStatement statement = connection.prepareStatement("""
+            INSERT INTO character_jobs (character_id, war, mnk, whm, blm, rdm, thf)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """)) {
+            statement.setLong(1, characterId);
+            for (int jobSlot = 1; jobSlot <= 6; jobSlot++) {
+                statement.setInt(jobSlot + 1, (jobSlot == mainJob) ? 1 : 0);
+            }
+            statement.executeUpdate();
+        }
+    }
+
     private void initDatabase() throws SQLException {
         try (Connection connection = dataSource.getConnection()) {
             try (PreparedStatement statement = connection.prepareStatement("""
@@ -619,22 +603,23 @@ public final class ServerMain {
                   session_id UUID PRIMARY KEY,
                   account_id BIGINT NOT NULL REFERENCES accounts(id),
                   character_id BIGINT NOT NULL,
-                  zone_id INT NOT NULL,
+                  zone_id INT NOT NULL DEFAULT 0,
                   last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                   UNIQUE (account_id),
                   UNIQUE (character_id)
                 );
-                ALTER TABLE accounts_sessions ADD COLUMN IF NOT EXISTS zone_id INT NOT NULL DEFAULT 0;
-                CREATE INDEX IF NOT EXISTS idx_accounts_sessions_last_seen ON accounts_sessions(last_seen_at);
+                CREATE INDEX IF NOT EXISTS idx_accounts_sessions_last_seen
+                  ON accounts_sessions(last_seen_at);
                 CREATE TABLE IF NOT EXISTS characters (
                   id BIGSERIAL PRIMARY KEY,
                   account_id BIGINT NOT NULL REFERENCES accounts(id),
                   name VARCHAR(16) NOT NULL,
                   race SMALLINT NOT NULL,
-                  gender CHAR(1) NOT NULL DEFAULT 'M',
-                  face SMALLINT NOT NULL,
-                  starting_city VARCHAR(16) NOT NULL,
+                  size SMALLINT NOT NULL DEFAULT 1,
+                  face SMALLINT NOT NULL DEFAULT 0,
+                  main_job SMALLINT NOT NULL DEFAULT 1,
+                  nation SMALLINT NOT NULL DEFAULT 0,
                   home_zone_id INT NOT NULL,
                   home_x REAL NOT NULL,
                   home_y REAL NOT NULL,
@@ -648,13 +633,38 @@ public final class ServerMain {
                   deleted_at TIMESTAMPTZ NULL,
                   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 );
-                ALTER TABLE characters ADD COLUMN IF NOT EXISTS gender CHAR(1) NOT NULL DEFAULT 'M';
+                ALTER TABLE characters ADD COLUMN IF NOT EXISTS size SMALLINT NOT NULL DEFAULT 1;
+                ALTER TABLE characters ADD COLUMN IF NOT EXISTS main_job SMALLINT NOT NULL DEFAULT 1;
+                ALTER TABLE characters ADD COLUMN IF NOT EXISTS nation SMALLINT NOT NULL DEFAULT 0;
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_characters_name_active
-                  ON characters (LOWER(name))
-                  WHERE deleted_at IS NULL;
+                  ON characters (LOWER(name)) WHERE deleted_at IS NULL;
                 CREATE INDEX IF NOT EXISTS idx_characters_account_active
-                  ON characters (account_id)
-                  WHERE deleted_at IS NULL;
+                  ON characters (account_id) WHERE deleted_at IS NULL;
+                CREATE TABLE IF NOT EXISTS character_jobs (
+                  character_id BIGINT PRIMARY KEY REFERENCES characters(id) ON DELETE CASCADE,
+                  war SMALLINT NOT NULL DEFAULT 0,
+                  mnk SMALLINT NOT NULL DEFAULT 0,
+                  whm SMALLINT NOT NULL DEFAULT 0,
+                  blm SMALLINT NOT NULL DEFAULT 0,
+                  rdm SMALLINT NOT NULL DEFAULT 0,
+                  thf SMALLINT NOT NULL DEFAULT 0,
+                  pld SMALLINT NOT NULL DEFAULT 0,
+                  drk SMALLINT NOT NULL DEFAULT 0,
+                  bst SMALLINT NOT NULL DEFAULT 0,
+                  brd SMALLINT NOT NULL DEFAULT 0,
+                  rng SMALLINT NOT NULL DEFAULT 0,
+                  sam SMALLINT NOT NULL DEFAULT 0,
+                  nin SMALLINT NOT NULL DEFAULT 0,
+                  drg SMALLINT NOT NULL DEFAULT 0,
+                  smn SMALLINT NOT NULL DEFAULT 0,
+                  blu SMALLINT NOT NULL DEFAULT 0,
+                  cor SMALLINT NOT NULL DEFAULT 0,
+                  pup SMALLINT NOT NULL DEFAULT 0,
+                  dnc SMALLINT NOT NULL DEFAULT 0,
+                  sch SMALLINT NOT NULL DEFAULT 0,
+                  geo SMALLINT NOT NULL DEFAULT 0,
+                  run SMALLINT NOT NULL DEFAULT 0
+                );
                 """)) {
                 statement.execute();
             }
@@ -672,7 +682,6 @@ public final class ServerMain {
                 }
             }
         }
-
         Argon2 argon2 = Argon2Factory.create();
         String hash = argon2.hash(ARGON2_ITERATIONS, ARGON2_MEMORY_KIB, ARGON2_PARALLELISM, "dev".toCharArray());
         try (PreparedStatement insert = connection.prepareStatement(
@@ -681,16 +690,7 @@ public final class ServerMain {
             insert.setString(2, hash);
             insert.setString(3, "active");
             insert.executeUpdate();
-            LOGGER.info("Bootstrapped account username=dev password=dev hash={}", hash);
-        }
-    }
-
-    private void logQuicStatus() {
-        try {
-            Class.forName("io.netty.incubator.codec.quic.Quic");
-            LOGGER.info("QUIC stack detected: Netty incubator codec classes available");
-        } catch (ClassNotFoundException e) {
-            LOGGER.warn("QUIC stack unavailable on classpath");
+            LOGGER.info("Bootstrapped account username=dev password=dev");
         }
     }
 
@@ -706,6 +706,32 @@ public final class ServerMain {
         return new HikariDataSource(config);
     }
 
+    private int joinZone(String sessionId, int zoneId) {
+        sessionZones.put(sessionId, zoneId);
+        int count = zonePopulation.computeIfAbsent(zoneId, ignored -> new AtomicInteger(0)).incrementAndGet();
+        LOGGER.info("ZONE_ENTER zone={} session={} playersInZone={}", zoneId, sessionId, count);
+        return count;
+    }
+
+    private void leaveZone(String sessionId, Integer zoneIdHint) {
+        Integer zoneId = sessionZones.remove(sessionId);
+        if (zoneId == null) {
+            zoneId = zoneIdHint;
+        }
+        if (zoneId == null) {
+            return;
+        }
+        AtomicInteger count = zonePopulation.get(zoneId);
+        if (count == null) {
+            return;
+        }
+        int remaining = Math.max(0, count.decrementAndGet());
+        if (remaining == 0) {
+            zonePopulation.remove(zoneId, count);
+        }
+        LOGGER.info("ZONE_LEAVE zone={} session={} playersInZone={}", zoneId, sessionId, remaining);
+    }
+
     private MessageFrame loginError(String code, String message) {
         return new MessageFrame("LOGIN_ERR", Map.of("code", code, "message", message));
     }
@@ -718,101 +744,34 @@ public final class ServerMain {
         return value == null ? "" : value.trim();
     }
 
-    private String normalizeGender(String value) {
-        if ("F".equalsIgnoreCase(normalize(value))) {
-            return "F";
-        }
-        return "M";
-    }
-
-    private String parseGenderForCreate(String value) {
-        String normalized = normalize(value).toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "M", "F" -> normalized;
-            default -> null;
-        };
-    }
-
-    private String raceNameForId(int raceId) {
-        return switch (raceId) {
-            case 1 -> "HUME";
-            case 2 -> "ELVAAN";
-            case 3 -> "TARUTARU";
-            case 4 -> "MITHRA";
-            case 5 -> "GALKA";
-            default -> "UNKNOWN";
-        };
-    }
-
     private int parseInt(String value, int fallback) {
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Integer.parseInt(value);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+        if (value == null || value.isBlank()) return fallback;
+        try { return Integer.parseInt(value); } catch (NumberFormatException e) { return fallback; }
     }
 
     private long parseLong(String value, long fallback) {
-        if (value == null || value.isBlank()) {
-            return fallback;
-        }
-        try {
-            return Long.parseLong(value);
-        } catch (NumberFormatException e) {
-            return fallback;
-        }
+        if (value == null || value.isBlank()) return fallback;
+        try { return Long.parseLong(value); } catch (NumberFormatException e) { return fallback; }
     }
 
     private UUID parseUuid(String value) {
-        try {
-            return UUID.fromString(value);
-        } catch (IllegalArgumentException e) {
-            return null;
-        }
+        try { return UUID.fromString(value); } catch (IllegalArgumentException e) { return null; }
     }
 
-    private int joinZone(String sessionId, int zoneId) {
-        sessionZones.put(sessionId, zoneId);
-        int playersInZone = zonePopulation.computeIfAbsent(zoneId, ignored -> new AtomicInteger(0)).incrementAndGet();
-        LOGGER.info("ZONE_ENTER zone={} session={} playersInZone={}", zoneId, sessionId, playersInZone);
-        return playersInZone;
+    private String raceNameFor(int raceId) {
+        RaceRule rule = RACE_RULES.get(raceId);
+        return rule != null ? rule.name() : "Unknown";
     }
 
-    private void leaveZone(String sessionId, Integer zoneIdHint) {
-        Integer zoneId = zoneIdHint != null ? zoneIdHint : sessionZones.get(sessionId);
-        Integer mappedZoneId = sessionZones.remove(sessionId);
-        if (mappedZoneId != null) {
-            zoneId = mappedZoneId;
-        }
-        if (zoneId == null) {
-            return;
-        }
-
-        AtomicInteger count = zonePopulation.get(zoneId);
-        if (count == null) {
-            return;
-        }
-
-        int playersInZone = count.decrementAndGet();
-        if (playersInZone <= 0) {
-            zonePopulation.remove(zoneId, count);
-            playersInZone = 0;
-        }
-        LOGGER.info("ZONE_LEAVE zone={} session={} playersInZone={}", zoneId, sessionId, playersInZone);
+    private String jobNameFor(int jobId) {
+        return switch (jobId) {
+            case 1 -> "WAR"; case 2 -> "MNK"; case 3 -> "WHM";
+            case 4 -> "BLM"; case 5 -> "RDM"; case 6 -> "THF";
+            default -> "???";
+        };
     }
 
-    private record AuthTicket(long accountId, long expiresAtMs) {
-    }
-
-    private record CharacterStartLocation(int zoneId, float x, float y, float z, float rot) {
-    }
-
-    private record RaceRule(short id, boolean maleAllowed, boolean femaleAllowed) {
-        boolean allows(String gender) {
-            return "F".equals(gender) ? femaleAllowed : maleAllowed;
-        }
-    }
+    private record AuthTicket(long accountId, long expiresAtMs) {}
+    private record RaceRule(String name, int minSize, int maxSize) {}
+    private record ZoneSpawn(int zoneId, float x, float y, float z, float rot) {}
 }

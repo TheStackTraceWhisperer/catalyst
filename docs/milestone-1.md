@@ -87,3 +87,28 @@ UNAUTHENTICATED
 - [Protocol Status Conventions](./specs/milestone-1/protocol-status-conventions.md)
 - [Heartbeat and Timeout](./specs/milestone-1/heartbeat-timeout.md)
 - [Zone Routing Skeleton](./specs/milestone-1/zone-routing-skeleton.md)
+
+---
+
+## Milestone 1 Status: CLOSED
+
+**Closed:** 2026-08-03
+
+Milestone 1 is formally closed. All acceptance criteria above are met.
+
+### Caveats
+
+The following items were identified during M1 but are deferred to Milestone 2 by design:
+
+| Item | Deferred to |
+|---|---|
+| Dependency injection / Micronaut wiring | M2 — `micronaut-configuration` spec |
+| Application state machine (formal FSM) | M2 — `application-state-machine` spec |
+| SOLID refactor of client and server | M2 — `solid-refactor` spec |
+| `ffxi-engine` module (IService, Engine loop, Launcher) | M2 — `engine-module` spec |
+| Configuration / property management (no hardcoded values) | M2 — `micronaut-configuration` spec |
+| Lombok adoption | M2 — `solid-refactor` spec |
+| OpenGL 4.6 upgrade | M2 — `solid-refactor` spec |
+| WireCodec extensibility and type safety | M2 — `wire-protocol-v2` spec |
+
+M1 delivers a working end-to-end connection/auth/character/session slice. M2 delivers the structural kernel that M1 was always intended to prove — Milestone 1 is the proof of life; Milestone 2 is the kernel.

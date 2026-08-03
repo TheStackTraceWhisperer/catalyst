@@ -289,23 +289,21 @@ The gateway validates the auth token on every pre-session request, then routes b
 @startuml routing
 !theme plain
 skinparam defaultFontSize 13
-skinparam linetype ortho
 
-rectangle "Gateway Phase Router" {
-  map "static routes (by message type)" {
-    LOGIN => Login Service
-    CHAR_LIST => Lobby Service
-    CHAR_CREATE => Lobby Service
-    CHAR_SELECT => Lobby Service
-    CHAR_DELETE => Lobby Service
-    PLAY => Lobby Service
-  }
-  map "session routes (by sessionId lookup)" {
-    PING => World Server (route table)
-    LOGOUT => World Server (route table)
-    ZONE_CHANGE => World Server (route table)
-    ENTITY_UPDATE => World Server (route table)
-  }
+map "Static Routes (by message type)" as SR {
+  LOGIN => Login Service
+  CHAR_LIST => Lobby Service
+  CHAR_CREATE => Lobby Service
+  CHAR_SELECT => Lobby Service
+  CHAR_DELETE => Lobby Service
+  PLAY => Lobby Service
+}
+
+map "Session Routes (by sessionId lookup)" as SS {
+  PING => World Server
+  LOGOUT => World Server
+  ZONE_CHANGE => World Server
+  ENTITY_UPDATE => World Server
 }
 @enduml
 ```

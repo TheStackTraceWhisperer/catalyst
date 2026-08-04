@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.server.repository.CharacterRepository;
 import catalyst.ffxi.server.repository.SessionRepository;
 import catalyst.ffxi.server.session.AuthTicketStore;
@@ -9,6 +10,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.sql.SQLException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
@@ -43,43 +45,66 @@ public class LobbyHandler {
     private final AuthTicketStore tickets;
     private final Random rng = new Random();
 
-    public MessageFrame handleList(MessageFrame req) {
-        Long accountId = tickets.validate(req.get("authToken"));
+    public MessageFrame handleList(MessageFrame reqFrame) {
+        CharListRequest req;
+        try {
+            req = ProtocolMapper.toCharListRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return unauthorized();
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
         try {
             List<CharacterRepository.CharacterListRow> rows = characters.findActiveByAccount(accountId);
-            MessageFrame.Builder b = MessageFrame.builder("CHAR_LIST_OK").put("count", rows.size());
-            for (int i = 0; i < rows.size(); i++) {
-                var r = rows.get(i);
-                b.put("char" + i + "_id",      r.id())
-                 .put("char" + i + "_name",    r.name())
-                 .put("char" + i + "_race",    r.race())
-                 .put("char" + i + "_raceName",r.raceName())
-                 .put("char" + i + "_size",    r.size())
-                 .put("char" + i + "_face",    r.face())
-                 .put("char" + i + "_mainJob", r.mainJob())
-                 .put("char" + i + "_jobName", r.jobName())
-                 .put("char" + i + "_nation",  r.nation())
-                 .put("char" + i + "_zone",    r.currentZoneId());
+            List<CharListResponse.CharacterDto> characterDtos = new ArrayList<>(rows.size());
+            for (var r : rows) {
+                characterDtos.add(CharListResponse.CharacterDto.builder()
+                    .id(Long.toString(r.id()))
+                    .name(r.name())
+                    .race(r.race())
+                    .raceName(r.raceName())
+                    .size(r.size())
+                    .face(r.face())
+                    .mainJob(r.mainJob())
+                    .jobName(r.jobName())
+                    .nation(r.nation())
+                    .zone(r.currentZoneId())
+                    .build());
             }
+            CharListResponse resp = CharListResponse.builder()
+                .code("OK")
+                .characters(characterDtos)
+                .build();
             log.info("CHAR_LIST_OK account={} count={}", accountId, rows.size());
-            return b.build();
+            return ProtocolMapper.fromCharListResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_LIST_ERR account={}", accountId, e);
             return error("SERVER_ERROR", "Failed to load characters");
         }
     }
 
-    public MessageFrame handleCreate(MessageFrame req) {
-        Long accountId = tickets.validate(req.get("authToken"));
+    public MessageFrame handleCreate(MessageFrame reqFrame) {
+        CharCreateRequest req;
+        try {
+            req = ProtocolMapper.toCharCreateRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("INVALID_REQUEST", e.getMessage());
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
 
-        String name    = normalize(req.get("name"));
-        int    race    = req.getInt("race",    -1);
-        int    size    = req.getInt("size",    -1);
-        int    face    = req.getInt("face",    -1);
-        int    mainJob = Math.clamp(req.getInt("mainJob", 1), 1, 6);
-        int    nation  = req.getInt("nation",  -1);
+        String name    = normalize(req.getName());
+        int    race    = req.getRace();
+        int    size    = req.getSize();
+        int    face    = req.getFace();
+        int    mainJob = Math.clamp(req.getMainJob(), 1, 6);
+        
+        int nation = -1;
+        try {
+            nation = Integer.parseInt(req.getNation());
+        } catch (NumberFormatException ignored) {}
 
         if (!NAME_PATTERN.matcher(name).matches())
             return error("INVALID_NAME", "Character name must be 3-15 letters (A-Z)");
@@ -97,7 +122,12 @@ public class LobbyHandler {
                 spawn.zoneId(), spawn.x(), spawn.y(), spawn.z(), spawn.rot());
             log.info("CHAR_CREATE_OK account={} characterId={} name={} race={} job={} nation={}",
                 accountId, charId, name, race, mainJob, nation);
-            return MessageFrame.builder("CHAR_CREATE_OK").put("characterId", charId).put("name", name).build();
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code("OK")
+                .characterId(charId)
+                .name(name)
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
         } catch (SQLException e) {
             if ("23505".equals(e.getSQLState())) {
                 log.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
@@ -108,10 +138,17 @@ public class LobbyHandler {
         }
     }
 
-    public MessageFrame handleSelect(MessageFrame req) {
-        Long accountId = tickets.validate(req.get("authToken"));
+    public MessageFrame handleSelect(MessageFrame reqFrame) {
+        CharSelectRequest req;
+        try {
+            req = ProtocolMapper.toCharSelectRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("INVALID_REQUEST", e.getMessage());
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
-        long charId = req.getLong("characterId", -1);
+        long charId = req.getCharacterId();
         if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
         try {
             if (sessions.hasActiveSession(accountId)) return error("ALREADY_ONLINE", "Account is already online");
@@ -119,32 +156,47 @@ public class LobbyHandler {
             if (identity.isEmpty()) return error("CHARACTER_NOT_FOUND", "Character not found");
             var id = identity.get();
             log.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, charId, id.currentZoneId());
-            return MessageFrame.builder("CHAR_SELECT_OK")
-                .put("characterId", charId)
-                .put("characterName", id.name())
-                .put("homeZoneId",    id.homeZoneId())
-                .put("currentZoneId", id.currentZoneId())
-                .put("x",   id.currentX())
-                .put("y",   id.currentY())
-                .put("z",   id.currentZ())
-                .put("rot", id.currentHeading())
+            
+            CharSelectResponse resp = CharSelectResponse.builder()
+                .code("OK")
+                .characterId(charId)
+                .characterName(id.name())
+                .homeZoneId(id.homeZoneId())
+                .currentZoneId(id.currentZoneId())
+                .x(id.currentX())
+                .y(id.currentY())
+                .z(id.currentZ())
+                .rot(id.currentHeading())
                 .build();
+            return ProtocolMapper.fromCharSelectResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_SELECT_ERR account={} charId={}", accountId, charId, e);
             return error("SERVER_ERROR", "Failed to load character");
         }
     }
 
-    public MessageFrame handleDelete(MessageFrame req) {
-        Long accountId = tickets.validate(req.get("authToken"));
+    public MessageFrame handleDelete(MessageFrame reqFrame) {
+        CharDeleteRequest req;
+        try {
+            req = ProtocolMapper.toCharDeleteRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("INVALID_REQUEST", e.getMessage());
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
-        long charId = req.getLong("characterId", -1);
+        long charId = req.getCharacterId();
         if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
         try {
             if (sessions.characterHasActiveSession(charId)) return error("CHARACTER_ACTIVE", "Character is currently online");
             if (!characters.softDelete(charId, accountId)) return error("CHARACTER_NOT_FOUND", "Character not found");
             log.info("CHAR_DELETE_OK account={} characterId={}", accountId, charId);
-            return MessageFrame.builder("CHAR_DELETE_OK").put("characterId", charId).build();
+            
+            CharDeleteResponse resp = CharDeleteResponse.builder()
+                .code("OK")
+                .characterId(charId)
+                .build();
+            return ProtocolMapper.fromCharDeleteResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_DELETE_ERR account={} charId={}", accountId, charId, e);
             return error("SERVER_ERROR", "Failed to delete character");

@@ -1,6 +1,9 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.LoginRequest;
+import catalyst.ffxi.common.net.dto.LoginResponse;
+import catalyst.ffxi.common.net.dto.ProtocolMapper;
 import catalyst.ffxi.server.config.ServerProperties;
 import catalyst.ffxi.server.repository.AccountRepository;
 import catalyst.ffxi.server.session.AuthTicketStore;
@@ -21,9 +24,16 @@ public class LoginHandler {
     private final AuthTicketStore tickets;
     private final ServerProperties props;
 
-    public MessageFrame handle(MessageFrame req) {
-        String username = normalize(req.get("username"));
-        String password = normalize(req.get("password"));
+    public MessageFrame handle(MessageFrame reqFrame) {
+        LoginRequest req;
+        try {
+            req = ProtocolMapper.toLoginRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("LOGIN_ERR", "INVALID_CREDENTIALS", e.getMessage());
+        }
+
+        String username = normalize(req.getUsername());
+        String password = normalize(req.getPassword());
         if (username.isBlank() || password.isBlank()) {
             return error("LOGIN_ERR", "INVALID_CREDENTIALS", "Username and password are required");
         }
@@ -45,12 +55,14 @@ public class LoginHandler {
             }
             String token = tickets.issue(account.id());
             log.info("LOGIN_OK user={} account={}", username, account.id());
-            return MessageFrame.builder("LOGIN_OK")
-                .put("code", "OK")
-                .put("message", "Authenticated")
-                .put("authToken", token)
-                .put("accountId", account.id())
+            
+            LoginResponse resp = LoginResponse.builder()
+                .code("OK")
+                .message("Authenticated")
+                .authToken(token)
+                .accountId(account.id())
                 .build();
+            return ProtocolMapper.fromLoginResponse(resp);
         } catch (SQLException e) {
             log.error("LOGIN_ERR user={} reason=db_error", username, e);
             return error("LOGIN_ERR", "SERVER_ERROR", "Authentication backend unavailable");

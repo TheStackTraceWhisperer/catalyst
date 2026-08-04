@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.server.config.ServerProperties;
 import catalyst.ffxi.server.repository.CharacterRepository;
 import catalyst.ffxi.server.repository.SessionRepository;
@@ -21,10 +22,17 @@ public class WorldHandler {
     private final AuthTicketStore tickets;
     private final ServerProperties props;
 
-    public MessageFrame handlePlay(MessageFrame req) {
-        Long accountId = tickets.validate(req.get("authToken"));
+    public MessageFrame handlePlay(MessageFrame reqFrame) {
+        PlayRequest req;
+        try {
+            req = ProtocolMapper.toPlayRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("UNAUTHORIZED", e.getMessage());
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return error("UNAUTHORIZED", "Invalid or expired auth token");
-        long charId = req.getLong("characterId", -1);
+        long charId = req.getCharacterId();
         if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
         try {
             var identity = characters.findActiveByIdAndAccount(charId, accountId);
@@ -42,45 +50,71 @@ public class WorldHandler {
             }
             int pop = sessions.getZonePopulation(id.currentZoneId());
             log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, sessionId, id.currentZoneId(), pop);
-            return MessageFrame.builder("PLAY_OK")
-                .put("sessionId",     sessionId)
-                .put("accountId",     accountId)
-                .put("characterId",   charId)
-                .put("characterName", id.name())
-                .put("zoneId",        id.currentZoneId())
-                .put("playersInZone", pop)
-                .put("keepaliveIntervalMs", props.getKeepaliveIntervalMs())
-                .put("homeZoneId",    id.homeZoneId())
-                .put("x",   id.currentX())
-                .put("y",   id.currentY())
-                .put("z",   id.currentZ())
-                .put("rot", id.currentHeading())
+            
+            PlayResponse resp = PlayResponse.builder()
+                .code("OK")
+                .sessionId(sessionId)
+                .accountId(accountId)
+                .characterId(charId)
+                .characterName(id.name())
+                .zoneId(id.currentZoneId())
+                .playersInZone(pop)
+                .keepaliveIntervalMs(props.getKeepaliveIntervalMs())
+                .homeZoneId(id.homeZoneId())
+                .x(id.currentX())
+                .y(id.currentY())
+                .z(id.currentZ())
+                .rot(id.currentHeading())
                 .build();
+            return ProtocolMapper.fromPlayResponse(resp);
         } catch (SQLException e) {
             log.error("PLAY_ERR account={} charId={}", accountId, charId, e);
             return error("SERVER_ERROR", "Failed to start session");
         }
     }
 
-    public MessageFrame handlePing(MessageFrame req) {
-        String sessionId = normalize(req.get("sessionId"));
+    public MessageFrame handlePing(MessageFrame reqFrame) {
+        PingRequest req;
+        try {
+            req = ProtocolMapper.toPingRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return error("SESSION_NOT_FOUND", e.getMessage());
+        }
+
+        String sessionId = normalize(req.getSessionId());
         if (sessionId.isBlank()) return error("SESSION_NOT_FOUND", "Missing sessionId");
         try {
             if (!sessions.ping(sessionId)) return error("SESSION_NOT_FOUND", "Session not found");
-            return MessageFrame.builder("PONG").put("sessionId", sessionId).build();
+            
+            PingResponse resp = PingResponse.builder()
+                .type("PONG")
+                .sessionId(sessionId)
+                .build();
+            return ProtocolMapper.fromPingResponse(resp);
         } catch (SQLException e) {
             log.error("PING_ERR session={}", sessionId, e);
             return error("SERVER_ERROR", "Failed to update keepalive");
         }
     }
 
-    public MessageFrame handleLogout(MessageFrame req) {
-        String sessionId = normalize(req.get("sessionId"));
+    public MessageFrame handleLogout(MessageFrame reqFrame) {
+        LogoutRequest req;
+        try {
+            req = ProtocolMapper.toLogoutRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            return MessageFrame.builder("BYE").put("sessionId", "-").build();
+        }
+
+        String sessionId = normalize(req.getSessionId());
         if (sessionId.isBlank()) return MessageFrame.builder("BYE").put("sessionId", "-").build();
         try {
             sessions.delete(sessionId);
             log.info("LOGOUT session={}", sessionId);
-            return MessageFrame.builder("BYE").put("sessionId", sessionId).build();
+            
+            LogoutResponse resp = LogoutResponse.builder()
+                .sessionId(sessionId)
+                .build();
+            return ProtocolMapper.fromLogoutResponse(resp);
         } catch (SQLException e) {
             log.error("LOGOUT_ERR session={}", sessionId, e);
             return error("SERVER_ERROR", "Failed to close session");

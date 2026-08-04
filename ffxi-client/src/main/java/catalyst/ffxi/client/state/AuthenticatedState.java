@@ -5,7 +5,6 @@ import catalyst.ffxi.client.network.QuicGatewayService.CharacterSummary;
 import catalyst.ffxi.client.ui.CharacterPanel;
 import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
-import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;

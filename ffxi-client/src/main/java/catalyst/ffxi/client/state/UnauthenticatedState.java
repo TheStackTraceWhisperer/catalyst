@@ -4,7 +4,6 @@ import catalyst.ffxi.client.config.ClientProperties;
 import catalyst.ffxi.client.network.QuicGatewayService;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.client.ui.LoginPanel;
-import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.common.net.dto.LoginResponse;
 import catalyst.ffxi.common.net.dto.ProtocolMapper;
 import catalyst.ffxi.engine.services.imgui.ImGuiService;

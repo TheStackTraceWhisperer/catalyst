@@ -6,6 +6,7 @@ import catalyst.ffxi.client.ui.CharacterPanel;
 import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
 import io.micronaut.context.BeanProvider;
@@ -79,34 +80,42 @@ public class AuthenticatedState implements ApplicationState {
 
     private void doSelect(String charId) {
         try {
-            MessageFrame resp = gateway.selectCharacter(host, port, authToken, charId);
-            if (!"CHAR_SELECT_OK".equals(resp.type())) { debugLog.log("CHAR_SELECT_ERR " + resp.get("code")); return; }
-            String charName = resp.get("characterName");
+            MessageFrame respFrame = gateway.selectCharacter(host, port, authToken, charId);
+            if (!"CHAR_SELECT_OK".equals(respFrame.type())) { debugLog.log("CHAR_SELECT_ERR " + respFrame.get("code")); return; }
+            CharSelectResponse resp = ProtocolMapper.toCharSelectResponse(respFrame);
+            String charName = resp.getCharacterName();
             panel.setSelectedCharacter(charId, charName);
             CharacterSelectedState next = selectedProvider.get();
-            next.init(host, port, authToken, accountId, charId, charName, resp.getInt("currentZoneId", 0));
+            next.init(host, port, authToken, accountId, charId, charName, resp.getCurrentZoneId());
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("CHAR_SELECT_ERR " + e.getMessage()); }
     }
 
     private void doDelete(String charId) {
         try {
-            MessageFrame resp = gateway.deleteCharacter(host, port, authToken, charId);
-            if ("CHAR_DELETE_OK".equals(resp.type())) { debugLog.log("CHAR_DELETE_OK id=" + charId); refreshCharacters(); }
-            else debugLog.log("CHAR_DELETE_ERR " + resp.get("code"));
+            MessageFrame respFrame = gateway.deleteCharacter(host, port, authToken, charId);
+            if ("CHAR_DELETE_OK".equals(respFrame.type())) { 
+                debugLog.log("CHAR_DELETE_OK id=" + charId); 
+                refreshCharacters(); 
+            } else {
+                debugLog.log("CHAR_DELETE_ERR " + respFrame.get("code"));
+            }
         } catch (Exception e) { debugLog.log("CHAR_DELETE_ERR " + e.getMessage()); }
     }
 
     private void doCreate() {
         try {
-            MessageFrame resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
+            MessageFrame respFrame = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if ("CHAR_CREATE_OK".equals(resp.type())) {
-                debugLog.log("CHAR_CREATE_OK id=" + resp.get("characterId") + " name=" + resp.get("name"));
+            if ("CHAR_CREATE_OK".equals(respFrame.type())) {
+                CharCreateResponse resp = ProtocolMapper.toCharCreateResponse(respFrame);
+                debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
                 panel.hideCreateForm();
                 refreshCharacters();
-            } else debugLog.log("CHAR_CREATE_ERR " + resp.get("code") + " " + resp.get("message"));
+            } else {
+                debugLog.log("CHAR_CREATE_ERR " + respFrame.get("code") + " " + respFrame.get("message"));
+            }
         } catch (Exception e) { debugLog.log("CHAR_CREATE_ERR " + e.getMessage()); }
     }
 }

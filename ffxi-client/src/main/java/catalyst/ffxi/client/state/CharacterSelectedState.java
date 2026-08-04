@@ -6,6 +6,7 @@ import catalyst.ffxi.client.ui.CharacterPanel;
 import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
 import io.micronaut.context.BeanProvider;
@@ -83,11 +84,12 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doSelect(String charId) {
         try {
-            MessageFrame resp = gateway.selectCharacter(host, port, authToken, charId);
-            if (!"CHAR_SELECT_OK".equals(resp.type())) { debugLog.log("CHAR_SELECT_ERR " + resp.get("code")); return; }
+            MessageFrame respFrame = gateway.selectCharacter(host, port, authToken, charId);
+            if (!"CHAR_SELECT_OK".equals(respFrame.type())) { debugLog.log("CHAR_SELECT_ERR " + respFrame.get("code")); return; }
+            CharSelectResponse resp = ProtocolMapper.toCharSelectResponse(respFrame);
             characterId = charId;
-            characterName = resp.get("characterName");
-            currentZoneId = resp.getInt("currentZoneId", 0);
+            characterName = resp.getCharacterName();
+            currentZoneId = resp.getCurrentZoneId();
             panel.setSelectedCharacter(characterId, characterName);
             updateSelectedStatus();
             debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
@@ -98,29 +100,30 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doDelete(String charId) {
         try {
-            MessageFrame resp = gateway.deleteCharacter(host, port, authToken, charId);
-            if ("CHAR_DELETE_OK".equals(resp.type())) {
+            MessageFrame respFrame = gateway.deleteCharacter(host, port, authToken, charId);
+            if ("CHAR_DELETE_OK".equals(respFrame.type())) {
                 debugLog.log("CHAR_DELETE_OK id=" + charId);
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + resp.get("code"));
+                debugLog.log("CHAR_DELETE_ERR " + respFrame.get("code"));
             }
         } catch (Exception e) {
             debugLog.log("CHAR_DELETE_ERR " + e.getMessage());
         }
     }
 
-    private void doCreate() {
+    private void doCreate( ) {
         try {
-            MessageFrame resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
+            MessageFrame respFrame = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if ("CHAR_CREATE_OK".equals(resp.type())) {
-                debugLog.log("CHAR_CREATE_OK id=" + resp.get("characterId") + " name=" + resp.get("name"));
+            if ("CHAR_CREATE_OK".equals(respFrame.type())) {
+                CharCreateResponse resp = ProtocolMapper.toCharCreateResponse(respFrame);
+                debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
                 panel.hideCreateForm();
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + resp.get("code") + " " + resp.get("message"));
+                debugLog.log("CHAR_CREATE_ERR " + respFrame.get("code") + " " + respFrame.get("message"));
             }
         } catch (Exception e) {
             debugLog.log("CHAR_CREATE_ERR " + e.getMessage());
@@ -133,12 +136,13 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doPlay() {
         try {
-            MessageFrame resp = gateway.play(host, port, authToken, characterId);
-            if (!"PLAY_OK".equals(resp.type())) { debugLog.log("PLAY_ERR " + resp.get("code")); return; }
-            String sessionId = resp.get("sessionId");
-            int zoneId = resp.getInt("zoneId", currentZoneId);
-            int pop    = resp.getInt("playersInZone", 0);
-            long keepaliveIntervalMs = resp.getLong("keepaliveIntervalMs", 5_000L);
+            MessageFrame respFrame = gateway.play(host, port, authToken, characterId);
+            if (!"PLAY_OK".equals(respFrame.type())) { debugLog.log("PLAY_ERR " + respFrame.get("code")); return; }
+            PlayResponse resp = ProtocolMapper.toPlayResponse(respFrame);
+            String sessionId = resp.getSessionId();
+            int zoneId = resp.getZoneId();
+            int pop    = resp.getPlayersInZone();
+            long keepaliveIntervalMs = resp.getKeepaliveIntervalMs();
             debugLog.log("PLAY_OK session=" + sessionId + " zone=" + zoneId + " players=" + pop);
             InGameState next = inGameProvider.get();
             next.init(host, port, authToken, accountId, sessionId, characterId, characterName, zoneId, keepaliveIntervalMs);

@@ -5,6 +5,8 @@ import catalyst.ffxi.client.network.QuicGatewayService;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.client.ui.LoginPanel;
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.dto.LoginResponse;
+import catalyst.ffxi.common.net.dto.ProtocolMapper;
 import catalyst.ffxi.engine.services.imgui.ImGuiService;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
@@ -55,16 +57,17 @@ public class UnauthenticatedState implements ApplicationState {
 
     private void doLogin() {
         try {
-            MessageFrame resp = gateway.login(host, port, panel.getUsername(), panel.getPassword());
-            if ("LOGIN_OK".equals(resp.type())) {
-                String authToken  = resp.get("authToken");
-                String accountId  = resp.get("accountId");
+            MessageFrame respFrame = gateway.login(host, port, panel.getUsername(), panel.getPassword());
+            if ("LOGIN_OK".equals(respFrame.type())) {
+                LoginResponse resp = ProtocolMapper.toLoginResponse(respFrame);
+                String authToken  = resp.getAuthToken();
+                String accountId  = Long.toString(resp.getAccountId());
                 debugLog.log("LOGIN_OK account=" + accountId);
                 AuthenticatedState next = authenticatedProvider.get();
                 next.init(host, port, authToken, accountId);
                 stateService.changeState(() -> next);
             } else {
-                debugLog.log("LOGIN_ERR " + resp.get("code") + " " + resp.get("message"));
+                debugLog.log("LOGIN_ERR " + respFrame.get("code") + " " + respFrame.get("message"));
             }
         } catch (Exception e) {
             debugLog.log("LOGIN_ERR " + e.getMessage());

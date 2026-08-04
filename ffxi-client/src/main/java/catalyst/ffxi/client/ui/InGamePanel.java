@@ -10,6 +10,7 @@ public class InGamePanel {
 
     @Getter private boolean pingRequested;
     @Getter private boolean logoutRequested;
+    @Getter private boolean characterSelectRequested;
 
     private String characterName = "";
     private String status        = "";
@@ -35,9 +36,15 @@ public class InGamePanel {
         ImGui.separator();
         if (ImGui.button("Ping Now")) pingRequested   = true;
         ImGui.sameLine();
+        if (ImGui.button("Character Select")) characterSelectRequested = true;
+        ImGui.sameLine();
         if (ImGui.button("Logout"))    logoutRequested = true;
         ImGui.end();
     }
 
-    public void clearIntents() { pingRequested = false; logoutRequested = false; }
+    public void clearIntents() {
+        pingRequested = false;
+        characterSelectRequested = false;
+        logoutRequested = false;
+    }
 }

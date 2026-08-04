@@ -2,6 +2,7 @@ package catalyst.ffxi.client.state;
 
 import catalyst.ffxi.client.network.QuicGatewayService;
 import catalyst.ffxi.client.ui.CharacterPanel;
+import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.common.net.MessageFrame;
 import catalyst.ffxi.engine.services.state.ApplicationState;
@@ -11,6 +12,9 @@ import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.opengl.GL11;
+
+import java.util.ArrayList;
+import java.util.List;
 
 @Slf4j
 @Prototype
@@ -24,18 +28,20 @@ public class CharacterSelectedState implements ApplicationState {
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<InGameState> inGameProvider;
 
-    private String host, authToken, characterId, characterName;
+    private String host, authToken, accountId, characterId, characterName;
     private int    port, currentZoneId;
 
-    public void init(String host, int port, String authToken, String characterId, String characterName, int currentZoneId) {
+    public void init(String host, int port, String authToken, String accountId, String characterId, String characterName, int currentZoneId) {
         this.host = host; this.port = port; this.authToken = authToken;
+        this.accountId = accountId;
         this.characterId = characterId; this.characterName = characterName; this.currentZoneId = currentZoneId;
     }
 
     @Override
     public void onEnter() {
+        refreshCharacters();
         panel.setSelectedCharacter(characterId, characterName);
-        panel.setStatus("Selected: " + characterName + " — click Play to enter zone " + currentZoneId);
+        updateSelectedStatus();
         debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
     }
 
@@ -45,13 +51,92 @@ public class CharacterSelectedState implements ApplicationState {
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
         panel.render();
         debugLog.render();
-        if (panel.isSignOutRequested()) stateService.changeState(unauthProvider::get);
-        if (panel.isPlayRequested())    doPlay();
+        processIntents();
         panel.clearIntents();
     }
 
     @Override
     public void onExit() {}
+
+    private void processIntents() {
+        if (panel.isRefreshRequested()) refreshCharacters();
+        if (panel.isSignOutRequested()) stateService.changeState(unauthProvider::get);
+        if (panel.getSelectCharacterId() != null) doSelect(panel.getSelectCharacterId());
+        if (panel.getDeleteCharacterId() != null) doDelete(panel.getDeleteCharacterId());
+        if (panel.isCreateSubmitted()) doCreate();
+        if (panel.isPlayRequested()) doPlay();
+    }
+
+    private void refreshCharacters() {
+        try {
+            MessageFrame resp = gateway.listCharacters(host, port, authToken);
+            if (!"CHAR_LIST_OK".equals(resp.type())) { debugLog.log("CHAR_LIST_ERR " + resp.get("code")); return; }
+            int count = resp.getInt("count", 0);
+            List<CharRow> rows = new ArrayList<>();
+            for (int i = 0; i < count; i++) {
+                int nation = resp.getInt("char" + i + "_nation", 0);
+                rows.add(new CharRow(resp.get("char" + i + "_id"), resp.get("char" + i + "_name"),
+                    resp.get("char" + i + "_raceName"), resp.getInt("char" + i + "_size", 1),
+                    resp.getInt("char" + i + "_face", 0), resp.get("char" + i + "_jobName"),
+                    switch (nation) { case 0 -> "Sandy"; case 1 -> "Bastok"; default -> "Windurst"; }));
+            }
+            panel.setCharacters(rows);
+            updateSelectedStatus();
+            debugLog.log("CHAR_LIST_OK count=" + rows.size());
+        } catch (Exception e) {
+            debugLog.log("CHAR_LIST_ERR " + e.getMessage());
+        }
+    }
+
+    private void doSelect(String charId) {
+        try {
+            MessageFrame resp = gateway.selectCharacter(host, port, authToken, charId);
+            if (!"CHAR_SELECT_OK".equals(resp.type())) { debugLog.log("CHAR_SELECT_ERR " + resp.get("code")); return; }
+            characterId = charId;
+            characterName = resp.get("characterName");
+            currentZoneId = resp.getInt("currentZoneId", 0);
+            panel.setSelectedCharacter(characterId, characterName);
+            updateSelectedStatus();
+            debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
+        } catch (Exception e) {
+            debugLog.log("CHAR_SELECT_ERR " + e.getMessage());
+        }
+    }
+
+    private void doDelete(String charId) {
+        try {
+            MessageFrame resp = gateway.deleteCharacter(host, port, authToken, charId);
+            if ("CHAR_DELETE_OK".equals(resp.type())) {
+                debugLog.log("CHAR_DELETE_OK id=" + charId);
+                refreshCharacters();
+            } else {
+                debugLog.log("CHAR_DELETE_ERR " + resp.get("code"));
+            }
+        } catch (Exception e) {
+            debugLog.log("CHAR_DELETE_ERR " + e.getMessage());
+        }
+    }
+
+    private void doCreate() {
+        try {
+            MessageFrame resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
+                panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
+                Integer.toString(panel.getNationId()));
+            if ("CHAR_CREATE_OK".equals(resp.type())) {
+                debugLog.log("CHAR_CREATE_OK id=" + resp.get("characterId") + " name=" + resp.get("name"));
+                panel.hideCreateForm();
+                refreshCharacters();
+            } else {
+                debugLog.log("CHAR_CREATE_ERR " + resp.get("code") + " " + resp.get("message"));
+            }
+        } catch (Exception e) {
+            debugLog.log("CHAR_CREATE_ERR " + e.getMessage());
+        }
+    }
+
+    private void updateSelectedStatus() {
+        panel.setStatus("Selected: " + characterName + " — click Play to enter zone " + currentZoneId);
+    }
 
     private void doPlay() {
         try {
@@ -62,7 +147,7 @@ public class CharacterSelectedState implements ApplicationState {
             int pop    = resp.getInt("playersInZone", 0);
             debugLog.log("PLAY_OK session=" + sessionId + " zone=" + zoneId + " players=" + pop);
             InGameState next = inGameProvider.get();
-            next.init(host, port, sessionId, characterName, zoneId);
+            next.init(host, port, authToken, accountId, sessionId, characterId, characterName, zoneId);
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("PLAY_ERR " + e.getMessage()); }
     }

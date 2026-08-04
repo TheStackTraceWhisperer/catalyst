@@ -71,6 +71,11 @@ final class QuicGateway implements AutoCloseable {
         group = new NioEventLoopGroup(1);
         io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()
             .sslEngineProvider(q -> sslContext.newEngine(q.alloc(), host, port))
+            .maxIdleTimeout(60, TimeUnit.SECONDS)
+            .initialMaxData(10_000_000)
+            .initialMaxStreamDataBidirectionalLocal(1_000_000)
+            .initialMaxStreamDataBidirectionalRemote(1_000_000)
+            .initialMaxStreamsBidirectional(256)
             .build();
 
         udpChannel = new Bootstrap()

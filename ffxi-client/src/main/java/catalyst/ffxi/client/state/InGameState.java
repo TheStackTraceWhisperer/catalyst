@@ -23,12 +23,23 @@ public class InGameState implements ApplicationState {
     private final QuicGatewayService gateway;
     private final ApplicationStateService stateService;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
+    private final BeanProvider<CharacterSelectedState> selectedProvider;
 
-    private String host, sessionId, characterName;
-    private int    port;
+    private String host, authToken, accountId, sessionId, characterId, characterName;
+    private int    port, currentZoneId;
+    private boolean sessionClosed;
 
-    public void init(String host, int port, String sessionId, String characterName, int zoneId) {
-        this.host = host; this.port = port; this.sessionId = sessionId; this.characterName = characterName;
+    public void init(String host, int port, String authToken, String accountId,
+                     String sessionId, String characterId, String characterName, int zoneId) {
+        this.host = host;
+        this.port = port;
+        this.authToken = authToken;
+        this.accountId = accountId;
+        this.sessionId = sessionId;
+        this.characterId = characterId;
+        this.characterName = characterName;
+        this.currentZoneId = zoneId;
+        this.sessionClosed = false;
         panel.setContext(characterName, sessionId);
         debugLog.log("Entered zone " + zoneId + " as " + characterName);
     }
@@ -46,6 +57,7 @@ public class InGameState implements ApplicationState {
         panel.render();
         debugLog.render();
         if (panel.isPingRequested())   { keepAlive.sendPing(); }
+        if (panel.isCharacterSelectRequested()) doCharacterSelect();
         if (panel.isLogoutRequested()) doLogout();
         panel.clearIntents();
     }
@@ -53,16 +65,29 @@ public class InGameState implements ApplicationState {
     @Override
     public void onExit() {
         keepAlive.stop();
-        tryLogout();
+        closeSession();
     }
 
     private void doLogout() {
-        keepAlive.stop();
-        tryLogout();
+        closeSession();
         stateService.changeState(unauthProvider::get);
     }
 
+    private void doCharacterSelect() {
+        closeSession();
+        CharacterSelectedState next = selectedProvider.get();
+        next.init(host, port, authToken, accountId, characterId, characterName, currentZoneId);
+        stateService.changeState(() -> next);
+    }
+
+    private void closeSession() {
+        keepAlive.stop();
+        tryLogout();
+    }
+
     private void tryLogout() {
+        if (sessionClosed) return;
+        sessionClosed = true;
         try {
             gateway.logout(host, port, sessionId);
             debugLog.log("LOGOUT_OK session=" + sessionId);

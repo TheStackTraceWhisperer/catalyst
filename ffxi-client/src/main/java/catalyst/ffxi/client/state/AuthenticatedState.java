@@ -91,7 +91,7 @@ public class AuthenticatedState implements ApplicationState {
             String charName = resp.get("characterName");
             panel.setSelectedCharacter(charId, charName);
             CharacterSelectedState next = selectedProvider.get();
-            next.init(host, port, authToken, charId, charName, resp.getInt("currentZoneId", 0));
+            next.init(host, port, authToken, accountId, charId, charName, resp.getInt("currentZoneId", 0));
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("CHAR_SELECT_ERR " + e.getMessage()); }
     }

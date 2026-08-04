@@ -1,16 +1,15 @@
 package catalyst.ffxi.client.network;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.concurrency.TaskHandle;
+import catalyst.ffxi.common.concurrency.TaskScheduler;
+import catalyst.ffxi.common.concurrency.TaskStatus;
 import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.time.Instant;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Singleton
@@ -18,9 +17,9 @@ import java.util.concurrent.TimeUnit;
 public class KeepAliveService {
 
     private final QuicGatewayService gateway;
+    private final TaskScheduler taskScheduler;
 
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
-    private ScheduledFuture<?> task;
+    private TaskHandle<?> task;
 
     @Getter private volatile String status = "idle";
     @Getter private volatile long lastRttMs = -1;
@@ -36,12 +35,50 @@ public class KeepAliveService {
         this.sessionId = sessionId;
         this.status = "connected";
         long interval = Math.max(250L, intervalMs);
-        task = scheduler.scheduleAtFixedRate(this::sendPing, interval, interval, TimeUnit.MILLISECONDS);
+        
+        // Schedule keep alive loop using TaskScheduler
+        schedulePingLoop(interval);
         log.info("KeepAlive started session={} interval={}ms", sessionId, interval);
     }
 
+    private void schedulePingLoop(long intervalMs) {
+        task = taskScheduler.submit(() -> {
+            sendPing();
+            return null;
+        }, (res) -> {
+            // After successful ping processing (success callback runs on main thread), schedule the next ping
+            if (isActive()) {
+                taskScheduler.submit(() -> {
+                    Thread.sleep(intervalMs);
+                    return null;
+                }, (r) -> {
+                    if (isActive()) {
+                        schedulePingLoop(intervalMs);
+                    }
+                }, (err) -> {
+                    log.warn("Error in keepalive delay: {}", err.getMessage());
+                });
+            }
+        }, (err) -> {
+            log.warn("Error running ping: {}", err.getMessage());
+            if (isActive()) {
+                taskScheduler.submit(() -> {
+                    Thread.sleep(intervalMs);
+                    return null;
+                }, (r) -> {
+                    if (isActive()) {
+                        schedulePingLoop(intervalMs);
+                    }
+                }, (e) -> {});
+            }
+        });
+    }
+
     public void stop() {
-        if (task != null) { task.cancel(false); task = null; }
+        if (task != null) { 
+            task.cancel(true); 
+            task = null; 
+        }
         status = "idle";
         log.info("KeepAlive stopped");
     }
@@ -66,5 +103,5 @@ public class KeepAliveService {
         }
     }
 
-    public boolean isActive() { return task != null && !task.isDone(); }
+    public boolean isActive() { return task != null && task.getStatus() != TaskStatus.CANCELLED; }
 }

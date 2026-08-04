@@ -1,5 +1,6 @@
 package catalyst.ffxi.server;
 
+import catalyst.ffxi.common.concurrency.TaskScheduler;
 import catalyst.ffxi.server.config.ServerProperties;
 import catalyst.ffxi.server.dispatch.MessageDispatcher;
 import catalyst.ffxi.server.handler.LoginHandler;
@@ -15,9 +16,6 @@ import lombok.extern.slf4j.Slf4j;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
 
 @Slf4j
 @Singleton
@@ -30,8 +28,7 @@ public class ServerApplication {
     private final SessionRepository sessions;
     private final ServerProperties props;
     private final DataSource dataSource;
-
-    private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
+    private final TaskScheduler scheduler;
 
     public static void main(String[] args) {
         Micronaut.run(ServerApplication.class, args);
@@ -42,14 +39,31 @@ public class ServerApplication {
         applyRuntimeDdl();
         loginHandler.bootstrapDevAccount();
 
-        scheduler.scheduleAtFixedRate(this::cleanupSessions,    10, 10, TimeUnit.SECONDS);
-        scheduler.scheduleAtFixedRate(loginHandler::cleanupTickets, 10, 10, TimeUnit.SECONDS);
+        // Setup periodic cleanup using our TaskScheduler bean
+        schedulePeriodicPruning();
 
         transport.setDispatcher(dispatcher::dispatch);
         transport.start();
         log.info("FFXI server listening on UDP port {} (QUIC)", props.getPort());
         transport.awaitShutdown();
-        scheduler.shutdownNow();
+    }
+
+    private void schedulePeriodicPruning() {
+        scheduler.submit(() -> {
+            while (true) {
+                try {
+                    Thread.sleep(10000);
+                    cleanupSessions();
+                    loginHandler.cleanupTickets();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                } catch (Exception e) {
+                    log.error("Periodic pruning iteration failed", e);
+                }
+            }
+            return null;
+        });
     }
 
     /** Idempotent runtime DDL for column additions not in Docker init SQL */

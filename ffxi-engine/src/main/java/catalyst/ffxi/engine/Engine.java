@@ -1,5 +1,6 @@
 package catalyst.ffxi.engine;
 
+import catalyst.ffxi.common.concurrency.TaskScheduler;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
 import catalyst.ffxi.engine.services.time.FrameTimeService;
 import catalyst.ffxi.engine.services.window.WindowService;
@@ -22,6 +23,7 @@ public final class Engine implements Runnable {
     private final List<IService> services;
     private final WindowService windowService;
     private final FrameTimeService frameTime;
+    private final TaskScheduler taskScheduler;
 
     private EngineState state = EngineState.NEW;
     private int frames = 0;
@@ -46,6 +48,7 @@ public final class Engine implements Runnable {
             throw new IllegalStateException("Cannot tick uninitialized engine");
         }
         windowService.pollEvents();
+        taskScheduler.processForegroundTasks();
         for (IService service : services) service.update();
         float dt = frameTime.getDeltaTimeSeconds();
         for (IService service : services) service.update(dt);

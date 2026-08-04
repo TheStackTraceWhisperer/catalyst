@@ -15,6 +15,11 @@
 
   <dependencies>
     <dependency>
+      <groupId>catalyst</groupId>
+      <artifactId>ffxi-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
       <groupId>io.micronaut</groupId>
       <artifactId>micronaut-inject</artifactId>
     </dependency>

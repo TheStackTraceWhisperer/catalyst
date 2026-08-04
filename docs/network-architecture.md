@@ -4,7 +4,7 @@
 
 This document describes the complete network architecture for the FFXI Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
 
-This architecture is a deliberate divergence from LandSandBoat (see D-007 in `lsb-divergence.md`). LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
+This architecture deliberately diverges from LandSandBoat. LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
 
 ---
 

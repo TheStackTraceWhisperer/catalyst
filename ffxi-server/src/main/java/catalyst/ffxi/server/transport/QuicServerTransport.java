@@ -27,12 +27,11 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import jakarta.inject.Singleton;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @Singleton
 public final class QuicServerTransport {
-    private static final Logger LOGGER = LoggerFactory.getLogger(QuicServerTransport.class);
     static final String PROTOCOL = "ffxi-1";
 
     private final int port;
@@ -80,7 +79,7 @@ public final class QuicServerTransport {
             .sync()
             .channel();
 
-        LOGGER.info("QUIC server bound on UDP port {}", port);
+        log.info("QUIC server bound on UDP port {}", port);
     }
 
     public void awaitShutdown() throws InterruptedException {
@@ -134,7 +133,7 @@ public final class QuicServerTransport {
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            LOGGER.warn("QUIC stream error", cause);
+            log.warn("QUIC stream error", cause);
             ctx.close();
         }
     }

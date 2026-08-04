@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.server.config.ServerProperties;
 import catalyst.ffxi.server.repository.CharacterRepository;
 import catalyst.ffxi.server.repository.SessionRepository;
 import catalyst.ffxi.server.session.AuthTicketStore;
@@ -18,6 +19,7 @@ public class WorldHandler {
     private final CharacterRepository characters;
     private final SessionRepository sessions;
     private final AuthTicketStore tickets;
+    private final ServerProperties props;
 
     public MessageFrame handlePlay(MessageFrame req) {
         Long accountId = tickets.validate(req.get("authToken"));
@@ -47,6 +49,7 @@ public class WorldHandler {
                 .put("characterName", id.name())
                 .put("zoneId",        id.currentZoneId())
                 .put("playersInZone", pop)
+                .put("keepaliveIntervalMs", props.getKeepaliveIntervalMs())
                 .put("homeZoneId",    id.homeZoneId())
                 .put("x",   id.currentX())
                 .put("y",   id.currentY())

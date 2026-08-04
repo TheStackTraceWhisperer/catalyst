@@ -11,6 +11,48 @@ Deliver a thin end-to-end slice that proves the client/server backbone:
 5. Server creates and manages a session lifecycle with heartbeat and timeout.
 6. Disconnect/reconnect and cleanup paths work reliably.
 
+## Embedded Specification (M1)
+
+This section is the consolidated source of truth for Milestone 1 behavior.
+
+### Account/Auth and Session Model
+
+- Credentials are verified with Argon2id.
+- `LOGIN` issues an auth token.
+- Auth token alone does not create a game session; session creation occurs on `PLAY`.
+- Active in-game sessions are persisted in `accounts_sessions`.
+- Double-login prevention is enforced by unique account/character active-session constraints.
+
+### Character Lifecycle and Validation
+
+- Supported flow: list, create, select, delete (soft delete via `deleted_at`).
+- Creation validation rules:
+  - race: 1..8
+  - size: race-dependent (Tarutaru fixed small, Galka fixed large)
+  - face: 0..15
+  - starting job: 1..6
+  - nation: 0..2
+- Nation determines a random initial spawn from that nation's configured zone pool.
+
+### Transport and Protocol
+
+- Transport: QUIC over UDP (Netty incubator), TLS 1.3, protocol `ffxi-1`.
+- Request/response uses dedicated bidirectional streams over a persistent QUIC channel.
+- Wire format: `MessageFrame` pipe-delimited text (`TYPE|key=value|...`).
+- Core flow messages: `LOGIN`, `CHAR_LIST`, `CHAR_CREATE`, `CHAR_SELECT`, `CHAR_DELETE`, `PLAY`, `PING`, `LOGOUT`.
+
+### Heartbeat and Timeout
+
+- Session timeout threshold: 30 seconds.
+- Cleanup scheduler interval: 10 seconds.
+- Keepalive interval default: 5 seconds, server-configurable via `ffxi.server.keepalive-interval-ms`, sent to client in `PLAY_OK`, honored client-side.
+- `PING` is valid only after session creation; server replies with `PONG` or session errors.
+
+### Zone and Local Runtime
+
+- In-memory zone population tracking is maintained on join/leave/timeout cleanup.
+- Local-only mode is supported for client runtime without remote server dependency.
+
 ## Included Systems
 
 - Account/auth model (Argon2id, auth token issuance)
@@ -22,7 +64,7 @@ Deliver a thin end-to-end slice that proves the client/server backbone:
 - LWJGL + Dear ImGui client shell with phase-locked UI
 - Debug log viewer
 - Zone routing skeleton (in-memory zone population tracking)
-- Heartbeat/timeout (5s client interval, 30s server timeout)
+- Heartbeat/timeout (server-configured keepalive interval, 30s server timeout)
 - Local-only zone bootstrap path (dev mode)
 - Basic character identity payload
 
@@ -30,7 +72,7 @@ Deliver a thin end-to-end slice that proves the client/server backbone:
 
 - Combat, AI, inventory, full zone simulation
 - Script engine behavior
-- Gateway / multi-server split (single `ServerMain` in M1)
+- Gateway / multi-server split (single server process in M1)
 - Movement and camera (local-only mode bootstraps a zone but no movement yet)
 
 ## Transport
@@ -76,18 +118,6 @@ IN_GAME (sessionId created, keepalive active, zone joined)
 UNAUTHENTICATED
 ```
 
-## Specifications
-
-- [Account/Auth Model](./specs/milestone-1/account-auth-model.md)
-- [Account/Session Record Structures](./specs/milestone-1/account-session-record-structures.md)
-- [Character Identity Payload](./specs/milestone-1/character-identity-payload.md)
-- [Session State Machine](./specs/milestone-1/session-state-machine.md)
-- [Client Shell UI](./specs/milestone-1/client-shell-ui.md)
-- [Local-Only Runtime Mode](./specs/milestone-1/local-only-runtime-mode.md)
-- [Protocol Status Conventions](./specs/milestone-1/protocol-status-conventions.md)
-- [Heartbeat and Timeout](./specs/milestone-1/heartbeat-timeout.md)
-- [Zone Routing Skeleton](./specs/milestone-1/zone-routing-skeleton.md)
-
 ---
 
 ## Milestone 1 Status: CLOSED
@@ -96,19 +126,4 @@ UNAUTHENTICATED
 
 Milestone 1 is formally closed. All acceptance criteria above are met.
 
-### Caveats
-
-The following items were identified during M1 but are deferred to Milestone 2 by design:
-
-| Item | Deferred to |
-|---|---|
-| Dependency injection / Micronaut wiring | M2 — `micronaut-configuration` spec |
-| Application state machine (formal FSM) | M2 — `application-state-machine` spec |
-| SOLID refactor of client and server | M2 — `solid-refactor` spec |
-| `ffxi-engine` module (IService, Engine loop, Launcher) | M2 — `engine-module` spec |
-| Configuration / property management (no hardcoded values) | M2 — `micronaut-configuration` spec |
-| Lombok adoption | M2 — `solid-refactor` spec |
-| OpenGL 4.6 upgrade | M2 — `solid-refactor` spec |
-| WireCodec extensibility and type safety | M2 — `wire-protocol-v2` spec |
-
-M1 delivers a working end-to-end connection/auth/character/session slice. M2 delivers the structural kernel that M1 was always intended to prove — Milestone 1 is the proof of life; Milestone 2 is the kernel.
+M1 delivers the working end-to-end connection/auth/character/session slice. M2 delivers the structural kernel on top of it.

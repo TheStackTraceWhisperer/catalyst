@@ -1,6 +1,7 @@
 package catalyst.ffxi.client.state;
 
 import catalyst.ffxi.client.network.QuicGatewayService;
+import catalyst.ffxi.client.network.QuicGatewayService.CharacterSummary;
 import catalyst.ffxi.client.ui.CharacterPanel;
 import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
@@ -13,7 +14,6 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.opengl.GL11;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Slf4j
@@ -69,17 +69,10 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void refreshCharacters() {
         try {
-            MessageFrame resp = gateway.listCharacters(host, port, authToken);
-            if (!"CHAR_LIST_OK".equals(resp.type())) { debugLog.log("CHAR_LIST_ERR " + resp.get("code")); return; }
-            int count = resp.getInt("count", 0);
-            List<CharRow> rows = new ArrayList<>();
-            for (int i = 0; i < count; i++) {
-                int nation = resp.getInt("char" + i + "_nation", 0);
-                rows.add(new CharRow(resp.get("char" + i + "_id"), resp.get("char" + i + "_name"),
-                    resp.get("char" + i + "_raceName"), resp.getInt("char" + i + "_size", 1),
-                    resp.getInt("char" + i + "_face", 0), resp.get("char" + i + "_jobName"),
-                    switch (nation) { case 0 -> "Sandy"; case 1 -> "Bastok"; default -> "Windurst"; }));
-            }
+            List<CharacterSummary> summaries = gateway.listCharacterSummaries(host, port, authToken);
+            List<CharRow> rows = summaries.stream()
+                .map(c -> new CharRow(c.id(), c.name(), c.raceName(), c.size(), c.face(), c.jobName(), c.nationName()))
+                .toList();
             panel.setCharacters(rows);
             updateSelectedStatus();
             debugLog.log("CHAR_LIST_OK count=" + rows.size());
@@ -145,9 +138,10 @@ public class CharacterSelectedState implements ApplicationState {
             String sessionId = resp.get("sessionId");
             int zoneId = resp.getInt("zoneId", currentZoneId);
             int pop    = resp.getInt("playersInZone", 0);
+            long keepaliveIntervalMs = resp.getLong("keepaliveIntervalMs", 5_000L);
             debugLog.log("PLAY_OK session=" + sessionId + " zone=" + zoneId + " players=" + pop);
             InGameState next = inGameProvider.get();
-            next.init(host, port, authToken, accountId, sessionId, characterId, characterName, zoneId);
+            next.init(host, port, authToken, accountId, sessionId, characterId, characterName, zoneId, keepaliveIntervalMs);
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("PLAY_ERR " + e.getMessage()); }
     }

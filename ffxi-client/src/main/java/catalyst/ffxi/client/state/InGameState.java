@@ -27,10 +27,11 @@ public class InGameState implements ApplicationState {
 
     private String host, authToken, accountId, sessionId, characterId, characterName;
     private int    port, currentZoneId;
+    private long   keepaliveIntervalMs;
     private boolean sessionClosed;
 
     public void init(String host, int port, String authToken, String accountId,
-                     String sessionId, String characterId, String characterName, int zoneId) {
+                     String sessionId, String characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
         this.host = host;
         this.port = port;
         this.authToken = authToken;
@@ -39,6 +40,7 @@ public class InGameState implements ApplicationState {
         this.characterId = characterId;
         this.characterName = characterName;
         this.currentZoneId = zoneId;
+        this.keepaliveIntervalMs = keepaliveIntervalMs;
         this.sessionClosed = false;
         panel.setContext(characterName, sessionId);
         debugLog.log("Entered zone " + zoneId + " as " + characterName);
@@ -46,7 +48,7 @@ public class InGameState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        keepAlive.start(host, port, sessionId);
+        keepAlive.start(host, port, sessionId, keepaliveIntervalMs);
     }
 
     @Override

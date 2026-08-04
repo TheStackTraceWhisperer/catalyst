@@ -8,10 +8,6 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.PreparedStatement;
-import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.util.List;
 import java.util.Map;
@@ -45,7 +41,6 @@ public class LobbyHandler {
     private final CharacterRepository characters;
     private final SessionRepository sessions;
     private final AuthTicketStore tickets;
-    private final DataSource dataSource;
     private final Random rng = new Random();
 
     public MessageFrame handleList(MessageFrame req) {
@@ -97,19 +92,12 @@ public class LobbyHandler {
 
         ZoneSpawn spawn = NATION_ZONES.get(nation).get(rng.nextInt(3));
 
-        try (Connection c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                long charId = insertCharacter(c, accountId, name, race, size, face, mainJob, nation, spawn);
-                characters.insertJobs(c, charId, mainJob);
-                c.commit();
-                log.info("CHAR_CREATE_OK account={} characterId={} name={} race={} job={} nation={}",
-                    accountId, charId, name, race, mainJob, nation);
-                return MessageFrame.builder("CHAR_CREATE_OK").put("characterId", charId).put("name", name).build();
-            } catch (SQLException e) {
-                c.rollback();
-                throw e;
-            }
+        try {
+            long charId = characters.createWithJobs(accountId, name, race, size, face, mainJob, nation,
+                spawn.zoneId(), spawn.x(), spawn.y(), spawn.z(), spawn.rot());
+            log.info("CHAR_CREATE_OK account={} characterId={} name={} race={} job={} nation={}",
+                accountId, charId, name, race, mainJob, nation);
+            return MessageFrame.builder("CHAR_CREATE_OK").put("characterId", charId).put("name", name).build();
         } catch (SQLException e) {
             if ("23505".equals(e.getSQLState())) {
                 log.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
@@ -160,25 +148,6 @@ public class LobbyHandler {
         } catch (SQLException e) {
             log.error("CHAR_DELETE_ERR account={} charId={}", accountId, charId, e);
             return error("SERVER_ERROR", "Failed to delete character");
-        }
-    }
-
-    private long insertCharacter(Connection c, long accountId, String name, int race, int size,
-                                  int face, int mainJob, int nation, ZoneSpawn spawn) throws SQLException {
-        try (PreparedStatement s = c.prepareStatement("""
-            INSERT INTO characters (
-              account_id, name, race, size, face, main_job, nation,
-              home_zone_id, home_x, home_y, home_z, home_rot,
-              current_zone_id, current_x, current_y, current_z, current_rot
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
-            """)) {
-            s.setLong(1, accountId); s.setString(2, name); s.setInt(3, race); s.setInt(4, size);
-            s.setInt(5, face); s.setInt(6, mainJob); s.setInt(7, nation);
-            s.setInt(8, spawn.zoneId()); s.setFloat(9, spawn.x()); s.setFloat(10, spawn.y());
-            s.setFloat(11, spawn.z()); s.setFloat(12, spawn.rot());
-            s.setInt(13, spawn.zoneId()); s.setFloat(14, spawn.x()); s.setFloat(15, spawn.y());
-            s.setFloat(16, spawn.z()); s.setFloat(17, spawn.rot());
-            try (ResultSet rs = s.executeQuery()) { rs.next(); return rs.getLong("id"); }
         }
     }
 

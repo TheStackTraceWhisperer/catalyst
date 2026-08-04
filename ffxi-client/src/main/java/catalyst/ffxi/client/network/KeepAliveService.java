@@ -1,6 +1,5 @@
 package catalyst.ffxi.client.network;
 
-import catalyst.ffxi.client.config.ClientProperties;
 import catalyst.ffxi.common.net.MessageFrame;
 import jakarta.inject.Singleton;
 import lombok.Getter;
@@ -19,7 +18,6 @@ import java.util.concurrent.TimeUnit;
 public class KeepAliveService {
 
     private final QuicGatewayService gateway;
-    private final ClientProperties props;
 
     private final ScheduledExecutorService scheduler = Executors.newSingleThreadScheduledExecutor();
     private ScheduledFuture<?> task;
@@ -32,12 +30,12 @@ public class KeepAliveService {
     private int port;
     private String sessionId;
 
-    public void start(String host, int port, String sessionId) {
+    public void start(String host, int port, String sessionId, long intervalMs) {
         this.host = host;
         this.port = port;
         this.sessionId = sessionId;
         this.status = "connected";
-        long interval = props.getKeepaliveIntervalMs();
+        long interval = Math.max(250L, intervalMs);
         task = scheduler.scheduleAtFixedRate(this::sendPing, interval, interval, TimeUnit.MILLISECONDS);
         log.info("KeepAlive started session={} interval={}ms", sessionId, interval);
     }

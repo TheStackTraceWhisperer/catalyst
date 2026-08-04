@@ -11,6 +11,7 @@ public interface ServerProperties {
     @Bindable(defaultValue = "3")      int    getArgon2Iterations();
     @Bindable(defaultValue = "65536")  int    getArgon2MemoryKib();
     @Bindable(defaultValue = "1")      int    getArgon2Parallelism();
+    @Bindable(defaultValue = "5000")   long   getKeepaliveIntervalMs();
     @Bindable(defaultValue = "jdbc:postgresql://localhost:5432/ffxi") String getDbUrl();
     @Bindable(defaultValue = "ffxi")   String getDbUser();
     @Bindable(defaultValue = "ffxi")   String getDbPassword();  // override via FFXI_DB_PASSWORD in prod

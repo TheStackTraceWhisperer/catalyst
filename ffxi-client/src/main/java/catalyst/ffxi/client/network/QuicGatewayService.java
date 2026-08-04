@@ -5,6 +5,8 @@ import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -17,6 +19,24 @@ public class QuicGatewayService implements AutoCloseable {
 
     private final QuicGateway gateway = new QuicGateway();
 
+    public record CharacterSummary(
+        String id,
+        String name,
+        String raceName,
+        int size,
+        int face,
+        String jobName,
+        int nation
+    ) {
+        public String nationName() {
+            return switch (nation) {
+                case 0 -> "Sandy";
+                case 1 -> "Bastok";
+                default -> "Windurst";
+            };
+        }
+    }
+
     public MessageFrame login(String host, int port, String username, String password) throws IOException {
         var fields = new java.util.LinkedHashMap<String, String>();
         fields.put("username", username);
@@ -26,6 +46,27 @@ public class QuicGatewayService implements AutoCloseable {
 
     public MessageFrame listCharacters(String host, int port, String authToken) throws IOException {
         return gateway.request(host, port, "CHAR_LIST", Map.of("authToken", authToken));
+    }
+
+    public List<CharacterSummary> listCharacterSummaries(String host, int port, String authToken) throws IOException {
+        MessageFrame resp = listCharacters(host, port, authToken);
+        if (!"CHAR_LIST_OK".equals(resp.type())) {
+            throw new IOException("CHAR_LIST_ERR " + resp.get("code"));
+        }
+        int count = resp.getInt("count", 0);
+        List<CharacterSummary> rows = new ArrayList<>(count);
+        for (int i = 0; i < count; i++) {
+            rows.add(new CharacterSummary(
+                resp.get("char" + i + "_id"),
+                resp.get("char" + i + "_name"),
+                resp.get("char" + i + "_raceName"),
+                resp.getInt("char" + i + "_size", 1),
+                resp.getInt("char" + i + "_face", 0),
+                resp.get("char" + i + "_jobName"),
+                resp.getInt("char" + i + "_nation", 0)
+            ));
+        }
+        return rows;
     }
 
     public MessageFrame createCharacter(String host, int port, String authToken,

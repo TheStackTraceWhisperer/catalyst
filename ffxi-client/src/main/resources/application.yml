@@ -12,4 +12,3 @@ ffxi:
   client:
     default-server-host: 127.0.0.1
     default-server-port: 35555
-    keepalive-interval-ms: 5000

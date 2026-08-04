@@ -66,27 +66,43 @@ public class CharacterRepository {
         }
     }
 
-    public long insert(long accountId, String name, int race, int size, int face, int mainJob, int nation,
-                       int zoneId, float x, float y, float z, float rot) throws SQLException {
-        try (Connection c = dataSource.getConnection();
-             PreparedStatement s = c.prepareStatement("""
-                INSERT INTO characters (
-                  account_id, name, race, size, face, main_job, nation,
-                  home_zone_id, home_x, home_y, home_z, home_rot,
-                  current_zone_id, current_x, current_y, current_z, current_rot
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
-                """)) {
+    public long createWithJobs(long accountId, String name, int race, int size, int face, int mainJob, int nation,
+                               int zoneId, float x, float y, float z, float rot) throws SQLException {
+        try (Connection c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                long characterId = insertCharacter(c, accountId, name, race, size, face, mainJob, nation, zoneId, x, y, z, rot);
+                insertJobs(c, characterId, mainJob);
+                c.commit();
+                return characterId;
+            } catch (SQLException e) {
+                c.rollback();
+                throw e;
+            }
+        }
+    }
+
+    private long insertCharacter(Connection c, long accountId, String name, int race, int size, int face, int mainJob, int nation,
+                                 int zoneId, float x, float y, float z, float rot) throws SQLException {
+        try (PreparedStatement s = c.prepareStatement("""
+            INSERT INTO characters (
+              account_id, name, race, size, face, main_job, nation,
+              home_zone_id, home_x, home_y, home_z, home_rot,
+              current_zone_id, current_x, current_y, current_z, current_rot
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) RETURNING id
+            """)) {
             s.setLong(1, accountId); s.setString(2, name); s.setInt(3, race); s.setInt(4, size);
             s.setInt(5, face); s.setInt(6, mainJob); s.setInt(7, nation);
             s.setInt(8, zoneId); s.setFloat(9, x); s.setFloat(10, y); s.setFloat(11, z); s.setFloat(12, rot);
             s.setInt(13, zoneId); s.setFloat(14, x); s.setFloat(15, y); s.setFloat(16, z); s.setFloat(17, rot);
             try (ResultSet rs = s.executeQuery()) {
-                rs.next(); return rs.getLong("id");
+                rs.next();
+                return rs.getLong("id");
             }
         }
     }
 
-    public void insertJobs(Connection c, long characterId, int mainJob) throws SQLException {
+    private void insertJobs(Connection c, long characterId, int mainJob) throws SQLException {
         try (PreparedStatement s = c.prepareStatement(
             "INSERT INTO character_jobs (character_id,war,mnk,whm,blm,rdm,thf) VALUES (?,?,?,?,?,?,?)")) {
             s.setLong(1, characterId);

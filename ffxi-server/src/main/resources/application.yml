@@ -10,6 +10,7 @@ ffxi:
     argon2-iterations: 3
     argon2-memory-kib: 65536
     argon2-parallelism: 1
+    keepalive-interval-ms: 5000
     db-url: jdbc:postgresql://localhost:5432/ffxi
     db-user: ffxi
     db-password: ffxi

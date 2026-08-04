@@ -13,7 +13,7 @@ public interface ServerProperties {
     @Bindable(defaultValue = "1")      int    getArgon2Parallelism();
     @Bindable(defaultValue = "jdbc:postgresql://localhost:5432/ffxi") String getDbUrl();
     @Bindable(defaultValue = "ffxi")   String getDbUser();
-    String getDbPassword();
+    @Bindable(defaultValue = "ffxi")   String getDbPassword();  // override via FFXI_DB_PASSWORD in prod
     @Bindable(defaultValue = "8")      int    getDbPoolMaxSize();
     @Bindable(defaultValue = "1")      int    getDbPoolMinIdle();
     @Bindable(defaultValue = "10000")  long   getDbConnectionTimeoutMs();

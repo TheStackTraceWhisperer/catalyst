@@ -49,6 +49,7 @@ public final class Engine implements Runnable {
         for (IService service : services) service.update();
         float dt = frameTime.getDeltaTimeSeconds();
         for (IService service : services) service.update(dt);
+        for (IService service : services) service.postUpdate();
         windowService.swapBuffers();
         frames++;
     }

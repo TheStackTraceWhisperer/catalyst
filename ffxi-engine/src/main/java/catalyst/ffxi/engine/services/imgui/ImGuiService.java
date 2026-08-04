@@ -42,7 +42,8 @@ public class ImGuiService implements IService {
         ImGui.newFrame();
     }
 
-    public void render() {
+    @Override
+    public void postUpdate() {
         ImGui.render();
         implGl3.renderDrawData(ImGui.getDrawData());
     }

@@ -1,6 +1,7 @@
 package catalyst.ffxi.client.network;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.*;
 import jakarta.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -58,7 +59,7 @@ public class QuicGatewayService implements AutoCloseable {
 
     public List<CharacterSummary> listCharacterSummaries(String host, int port, String authToken) throws IOException {
         CharListResponse resp = listCharacters(host, port, authToken);
-        if (!"OK".equals(resp.getCode())) {
+        if (resp.getCode() != ResponseCode.OK) {
             throw new IOException("CHAR_LIST_ERR " + resp.getCode());
         }
         List<CharacterSummary> rows = new ArrayList<>(resp.getCharacters().size());

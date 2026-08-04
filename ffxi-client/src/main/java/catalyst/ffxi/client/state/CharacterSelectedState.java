@@ -84,9 +84,8 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doSelect(String charId) {
         try {
-            MessageFrame respFrame = gateway.selectCharacter(host, port, authToken, charId);
-            if (!"CHAR_SELECT_OK".equals(respFrame.type())) { debugLog.log("CHAR_SELECT_ERR " + respFrame.get("code")); return; }
-            CharSelectResponse resp = ProtocolMapper.toCharSelectResponse(respFrame);
+            CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
+            if (!"OK".equals(resp.getCode())) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
             characterId = charId;
             characterName = resp.getCharacterName();
             currentZoneId = resp.getCurrentZoneId();
@@ -100,12 +99,12 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doDelete(String charId) {
         try {
-            MessageFrame respFrame = gateway.deleteCharacter(host, port, authToken, charId);
-            if ("CHAR_DELETE_OK".equals(respFrame.type())) {
+            CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
+            if ("OK".equals(resp.getCode())) {
                 debugLog.log("CHAR_DELETE_OK id=" + charId);
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + respFrame.get("code"));
+                debugLog.log("CHAR_DELETE_ERR " + resp.getCode());
             }
         } catch (Exception e) {
             debugLog.log("CHAR_DELETE_ERR " + e.getMessage());
@@ -114,16 +113,15 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doCreate( ) {
         try {
-            MessageFrame respFrame = gateway.createCharacter(host, port, authToken, panel.getNewName(),
+            CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if ("CHAR_CREATE_OK".equals(respFrame.type())) {
-                CharCreateResponse resp = ProtocolMapper.toCharCreateResponse(respFrame);
+            if ("OK".equals(resp.getCode())) {
                 debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
                 panel.hideCreateForm();
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + respFrame.get("code") + " " + respFrame.get("message"));
+                debugLog.log("CHAR_CREATE_ERR " + resp.getCode() + " " + resp.getMessage());
             }
         } catch (Exception e) {
             debugLog.log("CHAR_CREATE_ERR " + e.getMessage());
@@ -136,9 +134,8 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doPlay() {
         try {
-            MessageFrame respFrame = gateway.play(host, port, authToken, characterId);
-            if (!"PLAY_OK".equals(respFrame.type())) { debugLog.log("PLAY_ERR " + respFrame.get("code")); return; }
-            PlayResponse resp = ProtocolMapper.toPlayResponse(respFrame);
+            PlayResponse resp = gateway.play(host, port, authToken, characterId);
+            if (!"OK".equals(resp.getCode())) { debugLog.log("PLAY_ERR " + resp.getCode()); return; }
             String sessionId = resp.getSessionId();
             int zoneId = resp.getZoneId();
             int pop    = resp.getPlayersInZone();

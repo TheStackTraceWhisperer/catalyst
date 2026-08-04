@@ -4,6 +4,7 @@ import catalyst.ffxi.client.network.KeepAliveService;
 import catalyst.ffxi.client.network.QuicGatewayService;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.client.ui.InGamePanel;
+import catalyst.ffxi.common.net.dto.LogoutResponse;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
 import io.micronaut.context.BeanProvider;
@@ -91,8 +92,8 @@ public class InGameState implements ApplicationState {
         if (sessionClosed) return;
         sessionClosed = true;
         try {
-            gateway.logout(host, port, sessionId);
-            debugLog.log("LOGOUT_OK session=" + sessionId);
+            LogoutResponse resp = gateway.logout(host, port, sessionId);
+            debugLog.log("LOGOUT_OK session=" + resp.getSessionId());
         } catch (Exception e) {
             debugLog.log("LOGOUT_ERR " + e.getMessage());
         }

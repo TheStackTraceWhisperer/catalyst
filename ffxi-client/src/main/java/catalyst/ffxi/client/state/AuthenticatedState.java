@@ -80,9 +80,8 @@ public class AuthenticatedState implements ApplicationState {
 
     private void doSelect(String charId) {
         try {
-            MessageFrame respFrame = gateway.selectCharacter(host, port, authToken, charId);
-            if (!"CHAR_SELECT_OK".equals(respFrame.type())) { debugLog.log("CHAR_SELECT_ERR " + respFrame.get("code")); return; }
-            CharSelectResponse resp = ProtocolMapper.toCharSelectResponse(respFrame);
+            CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
+            if (!"OK".equals(resp.getCode())) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
             String charName = resp.getCharacterName();
             panel.setSelectedCharacter(charId, charName);
             CharacterSelectedState next = selectedProvider.get();
@@ -93,28 +92,27 @@ public class AuthenticatedState implements ApplicationState {
 
     private void doDelete(String charId) {
         try {
-            MessageFrame respFrame = gateway.deleteCharacter(host, port, authToken, charId);
-            if ("CHAR_DELETE_OK".equals(respFrame.type())) { 
+            CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
+            if ("OK".equals(resp.getCode())) { 
                 debugLog.log("CHAR_DELETE_OK id=" + charId); 
                 refreshCharacters(); 
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + respFrame.get("code"));
+                debugLog.log("CHAR_DELETE_ERR " + resp.getCode());
             }
         } catch (Exception e) { debugLog.log("CHAR_DELETE_ERR " + e.getMessage()); }
     }
 
     private void doCreate() {
         try {
-            MessageFrame respFrame = gateway.createCharacter(host, port, authToken, panel.getNewName(),
+            CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if ("CHAR_CREATE_OK".equals(respFrame.type())) {
-                CharCreateResponse resp = ProtocolMapper.toCharCreateResponse(respFrame);
+            if ("OK".equals(resp.getCode())) {
                 debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
                 panel.hideCreateForm();
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + respFrame.get("code") + " " + respFrame.get("message"));
+                debugLog.log("CHAR_CREATE_ERR " + resp.getCode() + " " + resp.getMessage());
             }
         } catch (Exception e) { debugLog.log("CHAR_CREATE_ERR " + e.getMessage()); }
     }

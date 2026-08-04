@@ -37,13 +37,14 @@ public class QuicGatewayService implements AutoCloseable {
         }
     }
 
-    public MessageFrame login(String host, int port, String username, String password) throws IOException {
+    public LoginResponse login(String host, int port, String username, String password) throws IOException {
         LoginRequest req = LoginRequest.builder()
             .username(username)
             .password(password)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromLoginRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toLoginResponse(respFrame);
     }
 
     public MessageFrame listCharacters(String host, int port, String authToken) throws IOException {
@@ -75,7 +76,7 @@ public class QuicGatewayService implements AutoCloseable {
         return rows;
     }
 
-    public MessageFrame createCharacter(String host, int port, String authToken,
+    public CharCreateResponse createCharacter(String host, int port, String authToken,
                                          String name, int race, int size, int face, int mainJob, String nation) throws IOException {
         CharCreateRequest req = CharCreateRequest.builder()
             .authToken(authToken)
@@ -87,10 +88,11 @@ public class QuicGatewayService implements AutoCloseable {
             .nation(nation)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromCharCreateRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toCharCreateResponse(respFrame);
     }
 
-    public MessageFrame selectCharacter(String host, int port, String authToken, String characterId) throws IOException {
+    public CharSelectResponse selectCharacter(String host, int port, String authToken, String characterId) throws IOException {
         long charId = -1;
         try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
         CharSelectRequest req = CharSelectRequest.builder()
@@ -98,10 +100,11 @@ public class QuicGatewayService implements AutoCloseable {
             .characterId(charId)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromCharSelectRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toCharSelectResponse(respFrame);
     }
 
-    public MessageFrame deleteCharacter(String host, int port, String authToken, String characterId) throws IOException {
+    public CharDeleteResponse deleteCharacter(String host, int port, String authToken, String characterId) throws IOException {
         long charId = -1;
         try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
         CharDeleteRequest req = CharDeleteRequest.builder()
@@ -109,10 +112,11 @@ public class QuicGatewayService implements AutoCloseable {
             .characterId(charId)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromCharDeleteRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toCharDeleteResponse(respFrame);
     }
 
-    public MessageFrame play(String host, int port, String authToken, String characterId) throws IOException {
+    public PlayResponse play(String host, int port, String authToken, String characterId) throws IOException {
         long charId = -1;
         try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
         PlayRequest req = PlayRequest.builder()
@@ -120,23 +124,26 @@ public class QuicGatewayService implements AutoCloseable {
             .characterId(charId)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromPlayRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toPlayResponse(respFrame);
     }
 
-    public MessageFrame ping(String host, int port, String sessionId) throws IOException {
+    public PingResponse ping(String host, int port, String sessionId) throws IOException {
         PingRequest req = PingRequest.builder()
             .sessionId(sessionId)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromPingRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toPingResponse(respFrame);
     }
 
-    public MessageFrame logout(String host, int port, String sessionId) throws IOException {
+    public LogoutResponse logout(String host, int port, String sessionId) throws IOException {
         LogoutRequest req = LogoutRequest.builder()
             .sessionId(sessionId)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromLogoutRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toLogoutResponse(respFrame);
     }
 
     @Override

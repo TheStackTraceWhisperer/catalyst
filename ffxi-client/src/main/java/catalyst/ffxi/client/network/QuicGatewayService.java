@@ -47,20 +47,20 @@ public class QuicGatewayService implements AutoCloseable {
         return ProtocolMapper.toLoginResponse(respFrame);
     }
 
-    public MessageFrame listCharacters(String host, int port, String authToken) throws IOException {
+    public CharListResponse listCharacters(String host, int port, String authToken) throws IOException {
         CharListRequest req = CharListRequest.builder()
             .authToken(authToken)
             .build();
         MessageFrame reqFrame = ProtocolMapper.fromCharListRequest(req);
-        return gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        return ProtocolMapper.toCharListResponse(respFrame);
     }
 
     public List<CharacterSummary> listCharacterSummaries(String host, int port, String authToken) throws IOException {
-        MessageFrame respFrame = listCharacters(host, port, authToken);
-        if (!"CHAR_LIST_OK".equals(respFrame.type())) {
-            throw new IOException("CHAR_LIST_ERR " + respFrame.get("code"));
+        CharListResponse resp = listCharacters(host, port, authToken);
+        if (!"OK".equals(resp.getCode())) {
+            throw new IOException("CHAR_LIST_ERR " + resp.getCode());
         }
-        CharListResponse resp = ProtocolMapper.toCharListResponse(respFrame);
         List<CharacterSummary> rows = new ArrayList<>(resp.getCharacters().size());
         for (var c : resp.getCharacters()) {
             rows.add(new CharacterSummary(
@@ -93,8 +93,12 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     public CharSelectResponse selectCharacter(String host, int port, String authToken, String characterId) throws IOException {
-        long charId = -1;
-        try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
+        long charId;
+        try {
+            charId = Long.parseLong(characterId);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
+        }
         CharSelectRequest req = CharSelectRequest.builder()
             .authToken(authToken)
             .characterId(charId)
@@ -105,8 +109,12 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     public CharDeleteResponse deleteCharacter(String host, int port, String authToken, String characterId) throws IOException {
-        long charId = -1;
-        try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
+        long charId;
+        try {
+            charId = Long.parseLong(characterId);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
+        }
         CharDeleteRequest req = CharDeleteRequest.builder()
             .authToken(authToken)
             .characterId(charId)
@@ -117,8 +125,12 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     public PlayResponse play(String host, int port, String authToken, String characterId) throws IOException {
-        long charId = -1;
-        try { charId = Long.parseLong(characterId); } catch (NumberFormatException ignored) {}
+        long charId;
+        try {
+            charId = Long.parseLong(characterId);
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
+        }
         PlayRequest req = PlayRequest.builder()
             .authToken(authToken)
             .characterId(charId)

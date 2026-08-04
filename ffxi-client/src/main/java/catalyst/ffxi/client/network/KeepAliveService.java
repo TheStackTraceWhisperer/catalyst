@@ -3,6 +3,7 @@ package catalyst.ffxi.client.network;
 import catalyst.ffxi.common.concurrency.TaskHandle;
 import catalyst.ffxi.common.concurrency.TaskScheduler;
 import catalyst.ffxi.common.concurrency.TaskStatus;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.PingResponse;
 import jakarta.inject.Singleton;
 import lombok.Getter;
@@ -88,13 +89,13 @@ public class KeepAliveService {
         try {
             PingResponse resp = gateway.ping(host, port, sessionId);
             long rtt = System.currentTimeMillis() - t0;
-            if ("PONG".equals(resp.getType())) {
+            if (resp.getCode() == ResponseCode.OK) {
                 status = "ok";
                 lastRttMs = rtt;
                 lastOkAt = Instant.now();
                 log.debug("PONG session={} rtt={}ms", sessionId, rtt);
             } else {
-                status = resp.getCode();
+                status = resp.getCode() != null ? resp.getCode().name() : "error";
                 log.warn("PING_ERR code={}", resp.getCode());
             }
         } catch (Exception e) {

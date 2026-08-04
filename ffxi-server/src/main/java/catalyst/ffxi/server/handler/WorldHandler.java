@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.server.config.ServerProperties;
 import catalyst.ffxi.server.repository.CharacterRepository;
@@ -27,16 +28,38 @@ public class WorldHandler {
         try {
             req = ProtocolMapper.toPlayRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return error("UNAUTHORIZED", e.getMessage());
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
         }
 
         Long accountId = tickets.validate(req.getAuthToken());
-        if (accountId == null) return error("UNAUTHORIZED", "Invalid or expired auth token");
+        if (accountId == null) {
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.UNAUTHORIZED)
+                .message("Invalid or expired auth token")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        }
         long charId = req.getCharacterId();
-        if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
+        if (charId <= 0) {
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("characterId required")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        }
         try {
             var identity = characters.findActiveByIdAndAccount(charId, accountId);
-            if (identity.isEmpty()) return error("CHARACTER_NOT_FOUND", "Character not found");
+            if (identity.isEmpty()) {
+                PlayResponse resp = PlayResponse.builder()
+                    .code(ResponseCode.NOT_FOUND)
+                    .message("Character not found")
+                    .build();
+                return ProtocolMapper.fromPlayResponse(resp);
+            }
             var id = identity.get();
             String sessionId;
             try {
@@ -44,7 +67,11 @@ public class WorldHandler {
             } catch (SQLException e) {
                 if ("23505".equals(e.getSQLState())) {
                     log.info("PLAY_ERR account={} charId={} reason=already_online", accountId, charId);
-                    return error("ALREADY_ONLINE", "Account or character is already online");
+                    PlayResponse resp = PlayResponse.builder()
+                        .code(ResponseCode.CONFLICT)
+                        .message("Account or character is already online")
+                        .build();
+                    return ProtocolMapper.fromPlayResponse(resp);
                 }
                 throw e;
             }
@@ -52,7 +79,7 @@ public class WorldHandler {
             log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, sessionId, id.currentZoneId(), pop);
             
             PlayResponse resp = PlayResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .sessionId(sessionId)
                 .accountId(accountId)
                 .characterId(charId)
@@ -69,7 +96,11 @@ public class WorldHandler {
             return ProtocolMapper.fromPlayResponse(resp);
         } catch (SQLException e) {
             log.error("PLAY_ERR account={} charId={}", accountId, charId, e);
-            return error("SERVER_ERROR", "Failed to start session");
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to start session")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
         }
     }
 
@@ -78,22 +109,43 @@ public class WorldHandler {
         try {
             req = ProtocolMapper.toPingRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return error("SESSION_NOT_FOUND", e.getMessage());
+            PingResponse resp = PingResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromPingResponse(resp);
         }
 
         String sessionId = normalize(req.getSessionId());
-        if (sessionId.isBlank()) return error("SESSION_NOT_FOUND", "Missing sessionId");
+        if (sessionId.isBlank()) {
+            PingResponse resp = PingResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Missing sessionId")
+                .build();
+            return ProtocolMapper.fromPingResponse(resp);
+        }
         try {
-            if (!sessions.ping(sessionId)) return error("SESSION_NOT_FOUND", "Session not found");
+            if (!sessions.ping(sessionId)) {
+                PingResponse resp = PingResponse.builder()
+                    .code(ResponseCode.NOT_FOUND)
+                    .message("Session not found")
+                    .build();
+                return ProtocolMapper.fromPingResponse(resp);
+            }
             
             PingResponse resp = PingResponse.builder()
                 .type("PONG")
                 .sessionId(sessionId)
+                .code(ResponseCode.OK)
                 .build();
             return ProtocolMapper.fromPingResponse(resp);
         } catch (SQLException e) {
             log.error("PING_ERR session={}", sessionId, e);
-            return error("SERVER_ERROR", "Failed to update keepalive");
+            PingResponse resp = PingResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to update keepalive")
+                .build();
+            return ProtocolMapper.fromPingResponse(resp);
         }
     }
 
@@ -102,22 +154,37 @@ public class WorldHandler {
         try {
             req = ProtocolMapper.toLogoutRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return MessageFrame.builder("BYE").put("sessionId", "-").build();
+            LogoutResponse resp = LogoutResponse.builder()
+                .sessionId("-")
+                .code(ResponseCode.CONFLICT)
+                .build();
+            return ProtocolMapper.fromLogoutResponse(resp);
         }
 
         String sessionId = normalize(req.getSessionId());
-        if (sessionId.isBlank()) return MessageFrame.builder("BYE").put("sessionId", "-").build();
+        if (sessionId.isBlank()) {
+            LogoutResponse resp = LogoutResponse.builder()
+                .sessionId("-")
+                .code(ResponseCode.CONFLICT)
+                .build();
+            return ProtocolMapper.fromLogoutResponse(resp);
+        }
         try {
             sessions.delete(sessionId);
             log.info("LOGOUT session={}", sessionId);
             
             LogoutResponse resp = LogoutResponse.builder()
                 .sessionId(sessionId)
+                .code(ResponseCode.OK)
                 .build();
             return ProtocolMapper.fromLogoutResponse(resp);
         } catch (SQLException e) {
             log.error("LOGOUT_ERR session={}", sessionId, e);
-            return error("SERVER_ERROR", "Failed to close session");
+            LogoutResponse resp = LogoutResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to close session")
+                .build();
+            return ProtocolMapper.fromLogoutResponse(resp);
         }
     }
 

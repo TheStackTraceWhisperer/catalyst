@@ -1,5 +1,6 @@
 package catalyst.ffxi.common.net.dto;
 
+import catalyst.ffxi.common.net.ResponseCode;
 import lombok.Builder;
 import lombok.Value;
 
@@ -8,6 +9,6 @@ import lombok.Value;
 public class PingResponse {
     String type; // e.g. PONG or ERROR
     String sessionId;
-    String code;
+    ResponseCode code;
     String message;
 }

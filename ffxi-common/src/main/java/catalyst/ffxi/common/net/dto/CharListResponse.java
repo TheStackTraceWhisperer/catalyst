@@ -1,5 +1,6 @@
 package catalyst.ffxi.common.net.dto;
 
+import catalyst.ffxi.common.net.ResponseCode;
 import lombok.Builder;
 import lombok.Value;
 import java.util.List;
@@ -7,7 +8,7 @@ import java.util.List;
 @Value
 @Builder
 public class CharListResponse {
-    String code;
+    ResponseCode code;
     List<CharacterDto> characters;
 
     @Value

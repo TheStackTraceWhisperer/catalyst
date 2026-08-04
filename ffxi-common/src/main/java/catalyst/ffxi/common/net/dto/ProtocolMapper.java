@@ -1,6 +1,7 @@
 package catalyst.ffxi.common.net.dto;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.ResponseCode;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -9,6 +10,19 @@ import java.util.Map;
 public final class ProtocolMapper {
 
     private ProtocolMapper() {}
+
+    private static ResponseCode parseCode(String codeStr) {
+        if (codeStr == null) return null;
+        try {
+            return ResponseCode.valueOf(codeStr.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return ResponseCode.ERROR;
+        }
+    }
+
+    private static String stringifyCode(ResponseCode code) {
+        return code != null ? code.name() : null;
+    }
 
     // ── Login Mapping ───────────────────────────────────────────────────────
 
@@ -28,8 +42,9 @@ public final class ProtocolMapper {
     }
 
     public static LoginResponse toLoginResponse(MessageFrame frame) {
+        ResponseCode code = "LOGIN_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return LoginResponse.builder()
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .authToken(frame.get("authToken"))
             .accountId(frame.getLong("accountId", -1))
@@ -37,8 +52,8 @@ public final class ProtocolMapper {
     }
 
     public static MessageFrame fromLoginResponse(LoginResponse resp) {
-        var builder = MessageFrame.builder("LOGIN_OK");
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "LOGIN_OK" : "LOGIN_ERR");
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         if (resp.getAuthToken() != null) builder.put("authToken", resp.getAuthToken());
         builder.put("accountId", resp.getAccountId());
@@ -61,6 +76,7 @@ public final class ProtocolMapper {
     }
 
     public static CharListResponse toCharListResponse(MessageFrame frame) {
+        ResponseCode code = "CHAR_LIST_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         int count = frame.getInt("count", 0);
         List<CharListResponse.CharacterDto> characters = new ArrayList<>(count);
         for (int i = 0; i < count; i++) {
@@ -78,13 +94,14 @@ public final class ProtocolMapper {
                 .build());
         }
         return CharListResponse.builder()
-            .code("OK")
+            .code(code)
             .characters(characters)
             .build();
     }
 
     public static MessageFrame fromCharListResponse(CharListResponse resp) {
-        var builder = MessageFrame.builder("CHAR_LIST_OK");
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "CHAR_LIST_OK" : "CHAR_LIST_ERR");
+        builder.put("code", stringifyCode(resp.getCode()));
         builder.put("count", resp.getCharacters().size());
         for (int i = 0; i < resp.getCharacters().size(); i++) {
             var c = resp.getCharacters().get(i);
@@ -130,8 +147,9 @@ public final class ProtocolMapper {
     }
 
     public static CharCreateResponse toCharCreateResponse(MessageFrame frame) {
+        ResponseCode code = "CHAR_CREATE_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return CharCreateResponse.builder()
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .characterId(frame.getLong("characterId", -1))
             .name(frame.get("name"))
@@ -139,8 +157,8 @@ public final class ProtocolMapper {
     }
 
     public static MessageFrame fromCharCreateResponse(CharCreateResponse resp) {
-        var builder = MessageFrame.builder("CHAR_CREATE_OK");
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "CHAR_CREATE_OK" : "CHAR_CREATE_ERR");
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         builder.put("characterId", resp.getCharacterId());
         if (resp.getName() != null) builder.put("name", resp.getName());
@@ -165,8 +183,9 @@ public final class ProtocolMapper {
     }
 
     public static CharSelectResponse toCharSelectResponse(MessageFrame frame) {
+        ResponseCode code = "CHAR_SELECT_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return CharSelectResponse.builder()
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .characterId(frame.getLong("characterId", -1))
             .characterName(frame.get("characterName"))
@@ -180,8 +199,8 @@ public final class ProtocolMapper {
     }
 
     public static MessageFrame fromCharSelectResponse(CharSelectResponse resp) {
-        var builder = MessageFrame.builder("CHAR_SELECT_OK");
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "CHAR_SELECT_OK" : "CHAR_SELECT_ERR");
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         builder.put("characterId", resp.getCharacterId());
         if (resp.getCharacterName() != null) builder.put("characterName", resp.getCharacterName());
@@ -212,16 +231,17 @@ public final class ProtocolMapper {
     }
 
     public static CharDeleteResponse toCharDeleteResponse(MessageFrame frame) {
+        ResponseCode code = "CHAR_DELETE_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return CharDeleteResponse.builder()
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .characterId(frame.getLong("characterId", -1))
             .build();
     }
 
     public static MessageFrame fromCharDeleteResponse(CharDeleteResponse resp) {
-        var builder = MessageFrame.builder("CHAR_DELETE_OK");
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "CHAR_DELETE_OK" : "CHAR_DELETE_ERR");
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         builder.put("characterId", resp.getCharacterId());
         return builder.build();
@@ -245,8 +265,9 @@ public final class ProtocolMapper {
     }
 
     public static PlayResponse toPlayResponse(MessageFrame frame) {
+        ResponseCode code = "PLAY_OK".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return PlayResponse.builder()
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .sessionId(frame.get("sessionId"))
             .accountId(frame.getLong("accountId", -1))
@@ -264,8 +285,8 @@ public final class ProtocolMapper {
     }
 
     public static MessageFrame fromPlayResponse(PlayResponse resp) {
-        var builder = MessageFrame.builder("PLAY_OK");
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        var builder = MessageFrame.builder(resp.getCode() == ResponseCode.OK ? "PLAY_OK" : "PLAY_ERR");
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         if (resp.getSessionId() != null) builder.put("sessionId", resp.getSessionId());
         builder.put("accountId", resp.getAccountId())
@@ -298,10 +319,11 @@ public final class ProtocolMapper {
     }
 
     public static PingResponse toPingResponse(MessageFrame frame) {
+        ResponseCode code = "PONG".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return PingResponse.builder()
             .type(frame.type())
             .sessionId(frame.get("sessionId"))
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .build();
     }
@@ -309,7 +331,7 @@ public final class ProtocolMapper {
     public static MessageFrame fromPingResponse(PingResponse resp) {
         var builder = MessageFrame.builder(resp.getType() != null ? resp.getType() : "PONG");
         if (resp.getSessionId() != null) builder.put("sessionId", resp.getSessionId());
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         return builder.build();
     }
@@ -330,9 +352,10 @@ public final class ProtocolMapper {
     }
 
     public static LogoutResponse toLogoutResponse(MessageFrame frame) {
+        ResponseCode code = "BYE".equals(frame.type()) ? ResponseCode.OK : parseCode(frame.get("code"));
         return LogoutResponse.builder()
             .sessionId(frame.get("sessionId"))
-            .code(frame.get("code"))
+            .code(code)
             .message(frame.get("message"))
             .build();
     }
@@ -340,7 +363,7 @@ public final class ProtocolMapper {
     public static MessageFrame fromLogoutResponse(LogoutResponse resp) {
         var builder = MessageFrame.builder("BYE");
         if (resp.getSessionId() != null) builder.put("sessionId", resp.getSessionId());
-        if (resp.getCode() != null) builder.put("code", resp.getCode());
+        if (resp.getCode() != null) builder.put("code", stringifyCode(resp.getCode()));
         if (resp.getMessage() != null) builder.put("message", resp.getMessage());
         return builder.build();
     }

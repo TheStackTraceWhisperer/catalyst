@@ -4,6 +4,7 @@ import catalyst.ffxi.client.config.ClientProperties;
 import catalyst.ffxi.client.network.QuicGatewayService;
 import catalyst.ffxi.client.ui.DebugLogPanel;
 import catalyst.ffxi.client.ui.LoginPanel;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.LoginResponse;
 import catalyst.ffxi.common.net.dto.ProtocolMapper;
 import catalyst.ffxi.engine.services.imgui.ImGuiService;
@@ -57,7 +58,7 @@ public class UnauthenticatedState implements ApplicationState {
     private void doLogin() {
         try {
             LoginResponse resp = gateway.login(host, port, panel.getUsername(), panel.getPassword());
-            if ("OK".equals(resp.getCode())) {
+            if (resp.getCode() == ResponseCode.OK) {
                 String authToken  = resp.getAuthToken();
                 String accountId  = Long.toString(resp.getAccountId());
                 debugLog.log("LOGIN_OK account=" + accountId);

@@ -5,6 +5,7 @@ import catalyst.ffxi.client.network.QuicGatewayService.CharacterSummary;
 import catalyst.ffxi.client.ui.CharacterPanel;
 import catalyst.ffxi.client.ui.CharacterPanel.CharRow;
 import catalyst.ffxi.client.ui.DebugLogPanel;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.engine.services.state.ApplicationState;
 import catalyst.ffxi.engine.services.state.ApplicationStateService;
@@ -84,7 +85,7 @@ public class CharacterSelectedState implements ApplicationState {
     private void doSelect(String charId) {
         try {
             CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
-            if (!"OK".equals(resp.getCode())) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
+            if (resp.getCode() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
             characterId = charId;
             characterName = resp.getCharacterName();
             currentZoneId = resp.getCurrentZoneId();
@@ -99,7 +100,7 @@ public class CharacterSelectedState implements ApplicationState {
     private void doDelete(String charId) {
         try {
             CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
-            if ("OK".equals(resp.getCode())) {
+            if (resp.getCode() == ResponseCode.OK) {
                 debugLog.log("CHAR_DELETE_OK id=" + charId);
                 refreshCharacters();
             } else {
@@ -115,7 +116,7 @@ public class CharacterSelectedState implements ApplicationState {
             CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if ("OK".equals(resp.getCode())) {
+            if (resp.getCode() == ResponseCode.OK) {
                 debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
                 panel.hideCreateForm();
                 refreshCharacters();
@@ -134,7 +135,7 @@ public class CharacterSelectedState implements ApplicationState {
     private void doPlay() {
         try {
             PlayResponse resp = gateway.play(host, port, authToken, characterId);
-            if (!"OK".equals(resp.getCode())) { debugLog.log("PLAY_ERR " + resp.getCode()); return; }
+            if (resp.getCode() != ResponseCode.OK) { debugLog.log("PLAY_ERR " + resp.getCode()); return; }
             String sessionId = resp.getSessionId();
             int zoneId = resp.getZoneId();
             int pop    = resp.getPlayersInZone();

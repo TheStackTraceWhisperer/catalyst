@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.LoginRequest;
 import catalyst.ffxi.common.net.dto.LoginResponse;
 import catalyst.ffxi.common.net.dto.ProtocolMapper;
@@ -57,7 +58,7 @@ public class LoginHandler {
             log.info("LOGIN_OK user={} account={}", username, account.id());
             
             LoginResponse resp = LoginResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .message("Authenticated")
                 .authToken(token)
                 .accountId(account.id())
@@ -65,7 +66,11 @@ public class LoginHandler {
             return ProtocolMapper.fromLoginResponse(resp);
         } catch (SQLException e) {
             log.error("LOGIN_ERR user={} reason=db_error", username, e);
-            return error("LOGIN_ERR", "SERVER_ERROR", "Authentication backend unavailable");
+            LoginResponse resp = LoginResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Authentication backend unavailable")
+                .build();
+            return ProtocolMapper.fromLoginResponse(resp);
         }
     }
 

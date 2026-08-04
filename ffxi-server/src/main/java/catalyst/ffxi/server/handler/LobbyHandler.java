@@ -1,6 +1,7 @@
 package catalyst.ffxi.server.handler;
 
 import catalyst.ffxi.common.net.MessageFrame;
+import catalyst.ffxi.common.net.ResponseCode;
 import catalyst.ffxi.common.net.dto.*;
 import catalyst.ffxi.server.repository.CharacterRepository;
 import catalyst.ffxi.server.repository.SessionRepository;
@@ -73,14 +74,18 @@ public class LobbyHandler {
                     .build());
             }
             CharListResponse resp = CharListResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .characters(characterDtos)
                 .build();
             log.info("CHAR_LIST_OK account={} count={}", accountId, rows.size());
             return ProtocolMapper.fromCharListResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_LIST_ERR account={}", accountId, e);
-            return error("SERVER_ERROR", "Failed to load characters");
+            CharListResponse resp = CharListResponse.builder()
+                .code(ResponseCode.ERROR)
+                .characters(new ArrayList<>())
+                .build();
+            return ProtocolMapper.fromCharListResponse(resp);
         }
     }
 
@@ -89,7 +94,11 @@ public class LobbyHandler {
         try {
             req = ProtocolMapper.toCharCreateRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return error("INVALID_REQUEST", e.getMessage());
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
         }
 
         Long accountId = tickets.validate(req.getAuthToken());
@@ -106,14 +115,42 @@ public class LobbyHandler {
             nation = Integer.parseInt(req.getNation());
         } catch (NumberFormatException ignored) {}
 
-        if (!NAME_PATTERN.matcher(name).matches())
-            return error("INVALID_NAME", "Character name must be 3-15 letters (A-Z)");
+        if (!NAME_PATTERN.matcher(name).matches()) {
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Character name must be 3-15 letters (A-Z)")
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
+        }
         RaceRule rule = RACE_RULES.get(race);
-        if (rule == null) return error("INVALID_RACE", "Race must be 1-8");
-        if (size < rule.minSize() || size > rule.maxSize())
-            return error("INVALID_SIZE", "Size for " + rule.name() + " must be " + rule.minSize() + ".." + rule.maxSize());
-        if (face < 0 || face > 15) return error("INVALID_FACE", "Face must be 0-15");
-        if (nation < 0 || nation > 2) return error("INVALID_NATION", "Nation must be 0-2");
+        if (rule == null) {
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Race must be 1-8")
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
+        }
+        if (size < rule.minSize() || size > rule.maxSize()) {
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Size for " + rule.name() + " must be " + rule.minSize() + ".." + rule.maxSize())
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
+        }
+        if (face < 0 || face > 15) {
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Face must be 0-15")
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
+        }
+        if (nation < 0 || nation > 2) {
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("Nation must be 0-2")
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
+        }
 
         ZoneSpawn spawn = NATION_ZONES.get(nation).get(rng.nextInt(3));
 
@@ -123,7 +160,7 @@ public class LobbyHandler {
             log.info("CHAR_CREATE_OK account={} characterId={} name={} race={} job={} nation={}",
                 accountId, charId, name, race, mainJob, nation);
             CharCreateResponse resp = CharCreateResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .characterId(charId)
                 .name(name)
                 .build();
@@ -131,10 +168,18 @@ public class LobbyHandler {
         } catch (SQLException e) {
             if ("23505".equals(e.getSQLState())) {
                 log.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
-                return error("NAME_ALREADY_TAKEN", "Character name is already in use");
+                CharCreateResponse resp = CharCreateResponse.builder()
+                    .code(ResponseCode.CONFLICT)
+                    .message("Character name is already in use")
+                    .build();
+                return ProtocolMapper.fromCharCreateResponse(resp);
             }
             log.error("CHAR_CREATE_ERR account={}", accountId, e);
-            return error("SERVER_ERROR", "Failed to create character");
+            CharCreateResponse resp = CharCreateResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to create character")
+                .build();
+            return ProtocolMapper.fromCharCreateResponse(resp);
         }
     }
 
@@ -143,22 +188,44 @@ public class LobbyHandler {
         try {
             req = ProtocolMapper.toCharSelectRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return error("INVALID_REQUEST", e.getMessage());
+            CharSelectResponse resp = CharSelectResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromCharSelectResponse(resp);
         }
 
         Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
         long charId = req.getCharacterId();
-        if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
+        if (charId <= 0) {
+            CharSelectResponse resp = CharSelectResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("characterId required")
+                .build();
+            return ProtocolMapper.fromCharSelectResponse(resp);
+        }
         try {
-            if (sessions.hasActiveSession(accountId)) return error("ALREADY_ONLINE", "Account is already online");
+            if (sessions.hasActiveSession(accountId)) {
+                CharSelectResponse resp = CharSelectResponse.builder()
+                    .code(ResponseCode.CONFLICT)
+                    .message("Account is already online")
+                    .build();
+                return ProtocolMapper.fromCharSelectResponse(resp);
+            }
             var identity = characters.findActiveByIdAndAccount(charId, accountId);
-            if (identity.isEmpty()) return error("CHARACTER_NOT_FOUND", "Character not found");
+            if (identity.isEmpty()) {
+                CharSelectResponse resp = CharSelectResponse.builder()
+                    .code(ResponseCode.NOT_FOUND)
+                    .message("Character not found")
+                    .build();
+                return ProtocolMapper.fromCharSelectResponse(resp);
+            }
             var id = identity.get();
             log.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, charId, id.currentZoneId());
             
             CharSelectResponse resp = CharSelectResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .characterId(charId)
                 .characterName(id.name())
                 .homeZoneId(id.homeZoneId())
@@ -171,7 +238,11 @@ public class LobbyHandler {
             return ProtocolMapper.fromCharSelectResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_SELECT_ERR account={} charId={}", accountId, charId, e);
-            return error("SERVER_ERROR", "Failed to load character");
+            CharSelectResponse resp = CharSelectResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to load character")
+                .build();
+            return ProtocolMapper.fromCharSelectResponse(resp);
         }
     }
 
@@ -180,26 +251,52 @@ public class LobbyHandler {
         try {
             req = ProtocolMapper.toCharDeleteRequest(reqFrame);
         } catch (IllegalArgumentException e) {
-            return error("INVALID_REQUEST", e.getMessage());
+            CharDeleteResponse resp = CharDeleteResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromCharDeleteResponse(resp);
         }
 
         Long accountId = tickets.validate(req.getAuthToken());
         if (accountId == null) return unauthorized();
         long charId = req.getCharacterId();
-        if (charId <= 0) return error("INVALID_CHARACTER", "characterId required");
+        if (charId <= 0) {
+            CharDeleteResponse resp = CharDeleteResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("characterId required")
+                .build();
+            return ProtocolMapper.fromCharDeleteResponse(resp);
+        }
         try {
-            if (sessions.characterHasActiveSession(charId)) return error("CHARACTER_ACTIVE", "Character is currently online");
-            if (!characters.softDelete(charId, accountId)) return error("CHARACTER_NOT_FOUND", "Character not found");
+            if (sessions.characterHasActiveSession(charId)) {
+                CharDeleteResponse resp = CharDeleteResponse.builder()
+                    .code(ResponseCode.CONFLICT)
+                    .message("Character is currently online")
+                    .build();
+                return ProtocolMapper.fromCharDeleteResponse(resp);
+            }
+            if (!characters.softDelete(charId, accountId)) {
+                CharDeleteResponse resp = CharDeleteResponse.builder()
+                    .code(ResponseCode.NOT_FOUND)
+                    .message("Character not found")
+                    .build();
+                return ProtocolMapper.fromCharDeleteResponse(resp);
+            }
             log.info("CHAR_DELETE_OK account={} characterId={}", accountId, charId);
             
             CharDeleteResponse resp = CharDeleteResponse.builder()
-                .code("OK")
+                .code(ResponseCode.OK)
                 .characterId(charId)
                 .build();
             return ProtocolMapper.fromCharDeleteResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_DELETE_ERR account={} charId={}", accountId, charId, e);
-            return error("SERVER_ERROR", "Failed to delete character");
+            CharDeleteResponse resp = CharDeleteResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to delete character")
+                .build();
+            return ProtocolMapper.fromCharDeleteResponse(resp);
         }
     }
 

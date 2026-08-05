@@ -1,0 +1,10 @@
+package catalyst.common.network;
+
+public enum AuthCode {
+    AUTH_SUCCESS,
+    AUTH_INVALID_CREDENTIALS,
+    AUTH_ACCOUNT_DISABLED,
+    AUTH_ACCOUNT_BANNED,
+    AUTH_ALREADY_LOGGED_IN,
+    AUTH_SERVER_ERROR
+}

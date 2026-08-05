@@ -16,21 +16,26 @@ if [[ ! -x "${MVN}" ]]; then
 fi
 
 PORT="${1:-35555}"
-export FFXI_SERVER_PORT="${PORT}"
-export FFXI_DB_URL="${FFXI_DB_URL:-jdbc:postgresql://localhost:5432/ffxi}"
-export FFXI_DB_USER="${FFXI_DB_USER:-ffxi}"
-export FFXI_DB_PASSWORD="${FFXI_DB_PASSWORD:-ffxi}"
+export CATALYST_SERVER_PORT="${PORT}"
+export CATALYST_SERVER_DB_URL="${CATALYST_DB_URL:-jdbc:postgresql://localhost:5432/catalyst}"
+export CATALYST_SERVER_DB_USER="${CATALYST_DB_USER:-catalyst}"
+export CATALYST_SERVER_DB_PASSWORD="${CATALYST_DB_PASSWORD:-catalyst}"
+
+# Legacy/fallback environment variables
+export CATALYST_DB_URL="${CATALYST_SERVER_DB_URL}"
+export CATALYST_DB_USER="${CATALYST_SERVER_DB_USER}"
+export CATALYST_DB_PASSWORD="${CATALYST_SERVER_DB_PASSWORD}"
 
 echo "[server] building modules (Java $(java -version 2>&1 | head -1))..."
-"${MVN}" -q -DskipTests package -pl ffxi-server -am
+"${MVN}" -q -DskipTests package -pl server -am
 
 echo "[server] starting on port ${PORT}..."
-SERVER_JAR="${ROOT_DIR}/ffxi-server/target/ffxi-server-1.0-SNAPSHOT.jar"
+SERVER_JAR="${ROOT_DIR}/server/target/catalyst-server-1.0-SNAPSHOT.jar"
 if [[ ! -f "${SERVER_JAR}" ]]; then
   echo "[server] missing jar: ${SERVER_JAR}" >&2
   exit 1
 fi
-echo "[server] db=${FFXI_DB_URL} user=${FFXI_DB_USER}"
-java -cp "${SERVER_JAR}:${ROOT_DIR}/ffxi-server/target/lib/*" \
+echo "[server] db=${CATALYST_SERVER_DB_URL} user=${CATALYST_SERVER_DB_USER}"
+java -cp "${SERVER_JAR}:${ROOT_DIR}/server/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.ffxi.server.ServerApplication
+     catalyst.server.ServerApplication

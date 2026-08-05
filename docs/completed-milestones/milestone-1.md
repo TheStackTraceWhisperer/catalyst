@@ -36,7 +36,7 @@ This section is the consolidated source of truth for Milestone 1 behavior.
 
 ### Transport and Protocol
 
-- Transport: QUIC over UDP (Netty incubator), TLS 1.3, protocol `ffxi-1`.
+- Transport: QUIC over UDP (Netty incubator), TLS 1.3, protocol `catalyst-1`.
 - Request/response uses dedicated bidirectional streams over a persistent QUIC channel.
 - Wire format: `MessageFrame` pipe-delimited text (`TYPE|key=value|...`).
 - Core flow messages: `LOGIN`, `CHAR_LIST`, `CHAR_CREATE`, `CHAR_SELECT`, `CHAR_DELETE`, `PLAY`, `PING`, `LOGOUT`.
@@ -45,7 +45,7 @@ This section is the consolidated source of truth for Milestone 1 behavior.
 
 - Session timeout threshold: 30 seconds.
 - Cleanup scheduler interval: 10 seconds.
-- Keepalive interval default: 5 seconds, server-configurable via `ffxi.server.keepalive-interval-ms`, sent to client in `PLAY_OK`, honored client-side.
+- Keepalive interval default: 5 seconds, server-configurable via `catalyst.server.keepalive-interval-ms`, sent to client in `PLAY_OK`, honored client-side.
 - `PING` is valid only after session creation; server replies with `PONG` or session errors.
 
 ### Zone and Local Runtime
@@ -77,7 +77,7 @@ This section is the consolidated source of truth for Milestone 1 behavior.
 
 ## Transport
 
-All client/server communication uses **QUIC over UDP** (Netty incubator codec, protocol `ffxi-1`). Each request/response pair uses a dedicated bidirectional QUIC stream on a persistent `QuicChannel`. The wire format is pipe-delimited `MessageFrame` (`TYPE|key=value|key=value\n`).
+All client/server communication uses **QUIC over UDP** (Netty incubator codec, protocol `catalyst-1`). Each request/response pair uses a dedicated bidirectional QUIC stream on a persistent `QuicChannel`. The wire format is pipe-delimited `MessageFrame` (`TYPE|key=value|key=value\n`).
 
 ## Milestone Acceptance Criteria
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-`xim-source` is a **Kotlin/JS WebGL2 client simulator** for FFXI-style content.  
+`xim-source` is a **Kotlin/JS WebGL2 client simulator** for Catalyst-style content.  
 It runs entirely in the browser and is organized around:
 
 1. A browser bootstrap and platform layer

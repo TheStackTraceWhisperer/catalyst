@@ -16,14 +16,14 @@ if [[ ! -x "${MVN}" ]]; then
 fi
 
 echo "[client] building modules (Java $(java -version 2>&1 | head -1))..."
-"${MVN}" -q -DskipTests package -pl ffxi-client -am
+"${MVN}" -q -DskipTests package -pl client/application -am
 
 echo "[client] launching LWJGL + Dear ImGui client..."
-CLIENT_JAR="${ROOT_DIR}/ffxi-client/target/ffxi-client-1.0-SNAPSHOT.jar"
+CLIENT_JAR="${ROOT_DIR}/client/application/target/catalyst-client-application-1.0-SNAPSHOT.jar"
 if [[ ! -f "${CLIENT_JAR}" ]]; then
   echo "[client] missing jar: ${CLIENT_JAR}" >&2
   exit 1
 fi
-java -cp "${CLIENT_JAR}:${ROOT_DIR}/ffxi-client/target/lib/*" \
+java -cp "${CLIENT_JAR}:${ROOT_DIR}/client/application/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.ffxi.client.ClientApplication
+     catalyst.client.application.ClientApplication

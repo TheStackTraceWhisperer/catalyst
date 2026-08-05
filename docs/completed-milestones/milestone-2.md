@@ -8,13 +8,13 @@ This milestone does **not** add new game features. Every change is architectural
 
 ## Blueprint
 
-The `reference/october` project demonstrates the target patterns for the client engine: Micronaut + LWJGL, `IService`-based engine loop, stack-based `ApplicationStateService`, and `@Prototype` state beans. We adopt these patterns (not the code) as the structural blueprint for `ffxi-engine` and the client.
+The `reference/october` project demonstrates the target patterns for the client engine: Micronaut + LWJGL, `IService`-based engine loop, stack-based `ApplicationStateService`, and `@Prototype` state beans. We adopt these patterns (not the code) as the structural blueprint for `engine` and the client.
 
 ## Embedded Specification (M2)
 
 This section is the consolidated source of truth for Milestone 2 architecture.
 
-### Engine Kernel (`ffxi-engine`)
+### Engine Kernel (`engine`)
 
 - `Launcher` boots Micronaut and runs `Engine`.
 - `Engine` runs ordered `IService` implementations and exits cleanly when state stack is empty.
@@ -26,7 +26,7 @@ This section is the consolidated source of truth for Milestone 2 architecture.
 - Constructor injection via Lombok `@RequiredArgsConstructor` on injectable beans.
 - Runtime tuning constants are represented as `@ConfigurationProperties` with class-level defaults.
 - `application.yml` and environment variables are override layers, not the primary source of defaults.
-- Keepalive interval is server-owned (`ffxi.server.keepalive-interval-ms`), communicated in `PLAY_OK`, and honored by client runtime.
+- Keepalive interval is server-owned (`catalyst.server.keepalive-interval-ms`), communicated in `PLAY_OK`, and honored by client runtime.
 
 ### Client State Machine and Phase-Locking
 
@@ -49,9 +49,9 @@ This section is the consolidated source of truth for Milestone 2 architecture.
 
 ## Scope
 
-### 1. `ffxi-engine` Module (new)
+### 1. `engine` Module (new)
 
-Extract a new Maven module `ffxi-engine` that provides the shared client engine kernel:
+Extract a new Maven module `engine` that provides the shared client engine kernel:
 
 - `Launcher` — starts Micronaut `ApplicationContext`, retrieves `Engine` bean, calls `engine.run()`
 - `Engine` — `@Singleton`, owns the main loop, ticks `List<IService>` ordered by `executionOrder()`
@@ -65,7 +65,7 @@ Extract a new Maven module `ffxi-engine` that provides the shared client engine 
 
 ### 2. Micronaut Across All Modules
 
-- Add Micronaut to `ffxi-client`, `ffxi-server`, `ffxi-engine`
+- Add Micronaut to `client`, `server`, `engine`
 - `@Singleton`, `@Prototype`, `@Inject`, `@RequiredArgsConstructor` (Lombok) replace all manual construction
 - `@ConfigurationProperties` beans replace every hardcoded constant
 - Runtime defaults are defined in `@ConfigurationProperties`; `application.yml`/env vars provide overrides
@@ -139,9 +139,9 @@ Improve the wire protocol without breaking the existing message format:
 
 ## Acceptance Criteria
 
-- [x] `ffxi-engine` module exists with `Launcher`, `Engine`, `IService`, `ApplicationStateService`, `ApplicationState`, `GlfwContextService`, `WindowService`, `ImGuiService`
-- [x] `ffxi-client` uses `Launcher.run()` as entry point; Micronaut context wires all beans
-- [x] `ffxi-server` uses Micronaut for all bean wiring; handlers and repositories are separate classes
+- [x] `engine` module exists with `Launcher`, `Engine`, `IService`, `ApplicationStateService`, `ApplicationState`, `GlfwContextService`, `WindowService`, `ImGuiService`
+- [x] `client` uses `Launcher.run()` as entry point; Micronaut context wires all beans
+- [x] `server` uses Micronaut for all bean wiring; handlers and repositories are separate classes
 - [x] Runtime constants are represented by `@ConfigurationProperties` (class defaults), with `application.yml`/env used for overrides
 - [x] Client UI is driven by `ApplicationStateService`; each UI phase is a distinct `ApplicationState`
 - [x] Phase-locking is structural at auth/session boundaries, not conditional (`if (!hasAuthToken())`)

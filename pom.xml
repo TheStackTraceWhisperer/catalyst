@@ -5,15 +5,15 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>catalyst</groupId>
-  <artifactId>ffxi-java</artifactId>
+  <artifactId>catalyst-parent</artifactId>
   <version>1.0-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <modules>
-    <module>ffxi-common</module>
-    <module>ffxi-engine</module>
-    <module>ffxi-client</module>
-    <module>ffxi-server</module>
+    <module>common</module>
+    <module>client</module>
+    <module>server</module>
+    <module>tests</module>
   </modules>
 
   <properties>

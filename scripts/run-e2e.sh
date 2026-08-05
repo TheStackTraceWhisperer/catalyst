@@ -16,31 +16,36 @@ if [[ ! -x "${MVN}" ]]; then
 fi
 
 TEST_PORT=35559
-CONTAINER_NAME="ffxi-postgres-e2e"
+CONTAINER_NAME="catalyst-postgres-e2e"
 DB_PORT=55432
-FFXI_DB_URL="jdbc:postgresql://localhost:${DB_PORT}/ffxi"
+CATALYST_DB_URL="jdbc:postgresql://localhost:${DB_PORT}/catalyst"
 
-echo "=== Milestone 3 E2E Test Suite ==="
+echo "=== Milestone 5 E2E Test Suite ==="
 
 # 1. Spawn Postgres test container
 echo "[e2e] starting database container ${CONTAINER_NAME} on port ${DB_PORT}..."
-./scripts/up-postgres.sh
+CONTAINER_NAME="${CONTAINER_NAME}" DB_PORT="${DB_PORT}" DB_NAME="catalyst" DB_USER="catalyst" DB_PASSWORD="catalyst" ./scripts/up-postgres.sh
 
 # 2. Build code packages
 echo "[e2e] package compiling client/server modules..."
 "${MVN}" -q -DskipTests clean package
 
 # 3. Spawn server in background
-echo "[e2e] booting ffxi-server in background..."
-export FFXI_SERVER_PORT="${TEST_PORT}"
-export FFXI_DB_URL="${FFXI_DB_URL}"
-export FFXI_DB_USER="ffxi"
-export FFXI_DB_PASSWORD="ffxi"
+echo "[e2e] booting catalyst-server in background..."
+export CATALYST_SERVER_PORT="${TEST_PORT}"
+export CATALYST_SERVER_DB_URL="${CATALYST_DB_URL}"
+export CATALYST_SERVER_DB_USER="catalyst"
+export CATALYST_SERVER_DB_PASSWORD="catalyst"
 
-SERVER_JAR="${ROOT_DIR}/ffxi-server/target/ffxi-server-1.0-SNAPSHOT.jar"
-java -cp "${SERVER_JAR}:${ROOT_DIR}/ffxi-server/target/lib/*" \
+# Legacy/fallback environment variables
+export CATALYST_DB_URL="${CATALYST_DB_URL}"
+export CATALYST_DB_USER="catalyst"
+export CATALYST_DB_PASSWORD="catalyst"
+
+SERVER_JAR="${ROOT_DIR}/server/target/catalyst-server-1.0-SNAPSHOT.jar"
+java -cp "${SERVER_JAR}:${ROOT_DIR}/server/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.ffxi.server.ServerApplication > server-e2e.log 2>&1 &
+     catalyst.server.ServerApplication > server-e2e.log 2>&1 &
 SERVER_PID=$!
 
 function cleanup {
@@ -56,8 +61,8 @@ sleep 5
 
 # 4. Execute E2E harness
 echo "[e2e] running protocol validation test client..."
-CLIENT_JAR="${ROOT_DIR}/ffxi-client/target/ffxi-client-1.0-SNAPSHOT.jar"
-java -cp "${CLIENT_JAR}" \
-     catalyst.ffxi.client.network.E2EValidationHarness localhost "${TEST_PORT}"
+TESTS_JAR="${ROOT_DIR}/tests/target/catalyst-tests-1.0-SNAPSHOT.jar"
+java -cp "${TESTS_JAR}:${ROOT_DIR}/tests/target/lib/*" \
+     catalyst.tests.e2e.E2EValidationHarness localhost "${TEST_PORT}"
 
 echo "[e2e] E2E validation passed successfully!"

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the complete network architecture for the FFXI Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
+This document describes the complete network architecture for the Catalyst Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
 
 This architecture deliberately diverges from LandSandBoat. LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
 
@@ -61,7 +61,7 @@ WB -right-> WS
 ## 2. Internal Trust Model
 
 ### Classic problem (LSB-era)
-In retail FFXI and LSB, login and world servers shared a flat network. A world server connecting to the login server had to prove it was legitimate (server registry, shared secrets, connection keys). A spoofed external client could attempt to impersonate a world server.
+In retail Catalyst and LSB, login and world servers shared a flat network. A world server connecting to the login server had to prove it was legitimate (server registry, shared secrets, connection keys). A spoofed external client could attempt to impersonate a world server.
 
 ### Why the gateway eliminates this problem
 
@@ -116,7 +116,7 @@ WS -down-> DB : mTLS (world state only)
 
 ### Auth token validation: once at the gateway
 
-Auth tokens are validated **once** at the gateway before forwarding. Backend services trust that any inbound QUIC connection arrived from the gateway (enforced by network position + mTLS cert), and do not re-validate tokens. This eliminates the classic FFXI pattern of each server maintaining its own session verification chain.
+Auth tokens are validated **once** at the gateway before forwarding. Backend services trust that any inbound QUIC connection arrived from the gateway (enforced by network position + mTLS cert), and do not re-validate tokens. This eliminates the classic Catalyst pattern of each server maintaining its own session verification chain.
 
 ### Production cert management options
 
@@ -169,29 +169,29 @@ skinparam linetype polyline
 
 actor Client
 
-rectangle "ffxi-gateway" as GW {
+rectangle "gateway" as GW {
   component [QUIC Listener\n(external)] as QL
   component [Auth Token Validator] as ATV
   component [Phase Router] as PR
   component [Session Route Table\nsessionId → WorldServer] as RT
 }
 
-rectangle "ffxi-login" as LS {
+rectangle "login" as LS {
   component [Login Handler] as LH
 }
 
-rectangle "ffxi-lobby" as LBS {
+rectangle "lobby" as LBS {
   component [Character Handler] as CH
   component [World Selector] as WSel
 }
 
-rectangle "ffxi-world (A)" as WA {
+rectangle "world (A)" as WA {
   component [Session Handler] as SHA
   component [Zone Manager] as ZMA
   component [Entity Tracker] as ETA
 }
 
-rectangle "ffxi-world (B)" as WB {
+rectangle "world (B)" as WB {
   component [Session Handler] as SHB
   component [Zone Manager] as ZMB
   component [Entity Tracker] as ETB
@@ -381,12 +381,12 @@ L --> L : auth ticket consumed
 
 | Module | Responsibility | External Transport | Internal Transport |
 |---|---|---|---|
-| `ffxi-gateway` | Client-facing QUIC endpoint, TLS termination, auth token validation, phase routing, session→world route table | QUIC / TLS 1.3 | QUIC / mTLS |
-| `ffxi-login` | Account auth (Argon2id), auth token issuance | — | QUIC / mTLS |
-| `ffxi-lobby` | Character CRUD, soft delete, race/job/nation validation, world server assignment on PLAY | — | QUIC / mTLS |
-| `ffxi-world` | Session lifecycle, zone management, entity tracking, keepalive, movement | — | QUIC / mTLS |
-| `ffxi-common` | Shared wire codec (`MessageFrame`, `WireCodec`), domain models | — | — |
-| `ffxi-client` | LWJGL + Dear ImGui desktop client, `QuicGateway` transport | QUIC / TLS 1.3 | — |
+| `gateway` | Client-facing QUIC endpoint, TLS termination, auth token validation, phase routing, session→world route table | QUIC / TLS 1.3 | QUIC / mTLS |
+| `login` | Account auth (Argon2id), auth token issuance | — | QUIC / mTLS |
+| `lobby` | Character CRUD, soft delete, race/job/nation validation, world server assignment on PLAY | — | QUIC / mTLS |
+| `world` | Session lifecycle, zone management, entity tracking, keepalive, movement | — | QUIC / mTLS |
+| `common` | Shared wire codec (`MessageFrame`, `WireCodec`), domain models | — | — |
+| `client` | LWJGL + Dear ImGui desktop client, `QuicGateway` transport | QUIC / TLS 1.3 | — |
 
 ---
 
@@ -394,12 +394,12 @@ L --> L : auth ticket consumed
 
 | Concern | Milestone 1 (now) | Target |
 |---|---|---|
-| Client endpoint | Single `ServerMain` on UDP :35555 | `ffxi-gateway` on UDP :35555 |
+| Client endpoint | Single `ServerMain` on UDP :35555 | `gateway` on UDP :35555 |
 | Internal comms | N/A (single process) | QUIC / mTLS between gateway and services |
-| Auth | In `ServerMain` | `ffxi-login` service |
+| Auth | In `ServerMain` | `login` service |
 | Auth token validation | In `ServerMain` | Once at gateway; not repeated by backend |
-| Character ops | In `ServerMain` | `ffxi-lobby` service |
-| Session/world | In `ServerMain` | `ffxi-world` service(s) |
+| Character ops | In `ServerMain` | `lobby` service |
+| Session/world | In `ServerMain` | `world` service(s) |
 | Server-to-server auth | N/A | mTLS pinned certs (dev) / cert-manager (k8s) |
-| World scale | Single in-memory map | Multiple `ffxi-world` instances + world registry |
+| World scale | Single in-memory map | Multiple `world` instances + world registry |
 | DB | Single PostgreSQL | Accounts/chars DB + world state DB |

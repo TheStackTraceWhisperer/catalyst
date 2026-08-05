@@ -1,6 +1,0 @@
-ffxi:
-  server:
-    port: ${FFXI_SERVER_PORT:35555}
-    db-url: ${FFXI_DB_URL}
-    db-user: ${FFXI_DB_USER}
-    db-password: ${FFXI_DB_PASSWORD}

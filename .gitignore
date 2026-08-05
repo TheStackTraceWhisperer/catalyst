@@ -5,6 +5,7 @@ target/
 .kotlin
 
 ### Reference projects (nested git repos) ###
+reference/
 reference/october/
 reference/server/
 
@@ -41,3 +42,6 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Log files ###
+*.log

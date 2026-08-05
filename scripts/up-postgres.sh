@@ -4,12 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-IMAGE_NAME="${IMAGE_NAME:-ffxi-postgres:17}"
-CONTAINER_NAME="${CONTAINER_NAME:-ffxi-postgres}"
+IMAGE_NAME="${IMAGE_NAME:-catalyst-postgres:17}"
+CONTAINER_NAME="${CONTAINER_NAME:-catalyst-postgres}"
 DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-ffxi}"
-DB_USER="${DB_USER:-ffxi}"
-DB_PASSWORD="${DB_PASSWORD:-ffxi}"
+DB_NAME="${DB_NAME:-catalyst}"
+DB_USER="${DB_USER:-catalyst}"
+DB_PASSWORD="${DB_PASSWORD:-catalyst}"
 
 echo "[postgres] building image ${IMAGE_NAME}..."
 docker build -t "${IMAGE_NAME}" docker/postgres

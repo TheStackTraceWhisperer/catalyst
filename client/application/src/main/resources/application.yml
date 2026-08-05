@@ -1,0 +1,14 @@
+micronaut:
+  banner:
+    enabled: false
+
+engine:
+  window:
+    width: 1280
+    height: 720
+    title: Catalyst Client
+
+catalyst:
+  client:
+    default-server-host: 127.0.0.1
+    default-server-port: 35555

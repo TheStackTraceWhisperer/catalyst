@@ -4,7 +4,7 @@
 
 This document describes the complete network architecture for the Catalyst Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
 
-This architecture deliberately diverges from LandSandBoat. LSB uses direct client-to-zone-server connections after login; this project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
+This project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
 
 ---
 
@@ -60,8 +60,8 @@ WB -right-> WS
 
 ## 2. Internal Trust Model
 
-### Classic problem (LSB-era)
-In retail Catalyst and LSB, login and world servers shared a flat network. A world server connecting to the login server had to prove it was legitimate (server registry, shared secrets, connection keys). A spoofed external client could attempt to impersonate a world server.
+### Trust Design
+The trust model assumes login and world servers operate behind a gateway. The gateway routes external clients to backend services, avoiding exposing internal services to potential impersonation.
 
 ### Why the gateway eliminates this problem
 

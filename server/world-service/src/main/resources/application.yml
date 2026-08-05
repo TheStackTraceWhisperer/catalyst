@@ -17,3 +17,13 @@ catalyst:
     db-pool-max-size: 8
     db-pool-min-idle: 1
     db-connection-timeout-ms: 10000
+
+datasources:
+  default:
+    url: ${catalyst.server.db-url:`jdbc:postgresql://localhost:5432/catalyst`}
+    username: ${catalyst.server.db-user:`catalyst`}
+    password: ${catalyst.server.db-password:`catalyst`}
+    driver-class-name: org.postgresql.Driver
+    maximum-pool-size: 8
+    minimum-idle: 1
+    connection-timeout: 10000

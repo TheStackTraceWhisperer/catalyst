@@ -20,6 +20,16 @@ CREATE TABLE IF NOT EXISTS accounts_sessions (
 CREATE INDEX IF NOT EXISTS idx_accounts_sessions_last_seen
   ON accounts_sessions(last_seen_at);
 
+CREATE TABLE IF NOT EXISTS accounts_auth_tokens (
+  token UUID PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_accounts_auth_tokens_expires
+  ON accounts_auth_tokens(expires_at);
+
 -- LSB race encoding: 1=HumeM 2=HumeF 3=ElvaanM 4=ElvaanF 5=TaruM 6=TaruF 7=Mithra 8=Galka
 -- size: 0=Small 1=Medium 2=Large (Tarutaru=0, Galka=2, others 0-2)
 -- face: 0-15 (face 1-8 x A/B hair variant)

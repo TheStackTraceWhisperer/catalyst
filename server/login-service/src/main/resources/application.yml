@@ -1,0 +1,19 @@
+micronaut:
+  banner:
+    enabled: false
+
+catalyst:
+  server:
+    port: 35555
+    session-timeout-seconds: 30
+    auth-ticket-timeout-seconds: 300
+    argon2-iterations: 3
+    argon2-memory-kib: 65536
+    argon2-parallelism: 1
+    keepalive-interval-ms: 5000
+    db-url: jdbc:postgresql://localhost:5432/catalyst
+    db-user: catalyst
+    db-password: catalyst
+    db-pool-max-size: 8
+    db-pool-min-idle: 1
+    db-connection-timeout-ms: 10000

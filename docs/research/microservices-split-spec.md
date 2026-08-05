@@ -28,11 +28,52 @@ root/
 └── tests/ (Aggregator for E2E)
 ```
 
-### Maven Dependency Tree Changes:
+### 1.1 Server Monomodule Aggregator Conversion Steps
+
+Currently, `server` is a monomodule containing direct source files. We must convert it into a parent aggregator module for the microservices:
+
+1.  **Deconstruct `server/pom.xml`**:
+    *   Change `<packaging>jar</packaging>` to `<packaging>pom</packaging>`.
+    *   Delete the `<dependencies>` and `<build>` elements (these will be moved to the individual submodules).
+    *   Add a `<modules>` section:
+        ```xml
+        <modules>
+          <module>login-service</module>
+          <module>lobby-service</module>
+          <module>world-service</module>
+        </modules>
+        ```
+2.  **Move Source Files & Split Code**:
+    *   Create directories for the submodules:
+        *   `server/login-service/src/main/java/`
+        *   `server/lobby-service/src/main/java/`
+        *   `server/world-service/src/main/java/`
+    *   **Login Service** takes ownership of:
+        *   `ServerProperties.java` (contains database auth configuration)
+        *   `DatabaseConfiguration.java` (sets up Hikari DataSource for accounts)
+        *   `ServerApplication.java` $\rightarrow$ Rename to `LoginServiceApplication.java` (retaining only Login initialization)
+        *   `handler/LoginHandler.java`
+        *   `repository/AccountRepository.java`
+    *   **Lobby Service** takes ownership of:
+        *   `DatabaseConfiguration.java` (sets up Hikari DataSource for character metadata)
+        *   `ServerApplication.java` $\rightarrow$ Rename to `LobbyServiceApplication.java` (retaining Lobby validation initialization)
+        *   `handler/LobbyHandler.java`
+        *   `repository/CharacterRepository.java`
+    *   **World Service** takes ownership of:
+        *   `ServerApplication.java` $\rightarrow$ Rename to `WorldServiceApplication.java` (retaining session manager loops)
+        *   `handler/WorldHandler.java`
+        *   `repository/SessionRepository.java`
+        *   `session/AuthTicketStore.java`
+        *   `session/ZoneManager.java`
+        *   `transport/QuicServerTransport.java` (acts as the internal backend listener)
+3.  **Clean up Parent `server` Module**:
+    *   Physically delete `server/src/` after file migration to ensure the parent module no longer compiles any code directly.
+
+### 1.2 Maven Dependency Tree Changes:
 1.  **`gateway`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, and `catalyst-common-dto`.
-2.  **`login-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`. Owns the database connection for Account credentials.
-3.  **`lobby-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`. Owns the database connection for Character lists.
-4.  **`world-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`.
+2.  **`login-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`, PostgreSQL driver, and Micronaut.
+3.  **`lobby-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`, PostgreSQL driver, and Micronaut.
+4.  **`world-service`**: Depends on `catalyst-common-network`, `catalyst-common-concurrency`, `catalyst-common-dto`, and Micronaut.
 
 ---
 

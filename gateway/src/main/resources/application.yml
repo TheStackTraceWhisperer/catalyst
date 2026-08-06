@@ -1,0 +1,13 @@
+micronaut:
+  banner:
+    enabled: false
+
+catalyst:
+  gateway:
+    port: 35555 # Public client UDP port
+    login-service-host: localhost
+    login-service-port: 35561
+    lobby-service-host: localhost
+    lobby-service-port: 35562
+    world-service-host: localhost
+    world-service-port: 35563

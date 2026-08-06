@@ -30,9 +30,8 @@ CONTAINER_NAME="${CONTAINER_NAME}" DB_PORT="${DB_PORT}" DB_NAME="catalyst" DB_US
 echo "[e2e] package compiling client/server modules..."
 "${MVN}" -q -DskipTests clean package
 
-# 3. Spawn server in background
-echo "[e2e] booting catalyst-server in background..."
-export CATALYST_SERVER_PORT="${TEST_PORT}"
+# 3. Spawn microservices in background
+echo "[e2e] booting login, lobby, world, and gateway services in background..."
 export CATALYST_SERVER_DB_URL="${CATALYST_DB_URL}"
 export CATALYST_SERVER_DB_USER="catalyst"
 export CATALYST_SERVER_DB_PASSWORD="catalyst"
@@ -42,15 +41,41 @@ export CATALYST_DB_URL="${CATALYST_DB_URL}"
 export CATALYST_DB_USER="catalyst"
 export CATALYST_DB_PASSWORD="catalyst"
 
-SERVER_JAR="${ROOT_DIR}/server/target/catalyst-server-1.0-SNAPSHOT.jar"
-java -cp "${SERVER_JAR}:${ROOT_DIR}/server/target/lib/*" \
+# Boot Login Service (Port 35561)
+LOGIN_JAR="${ROOT_DIR}/server/login-service/target/catalyst-login-service-1.0-SNAPSHOT.jar"
+export CATALYST_SERVER_PORT=35561
+java -cp "${LOGIN_JAR}:${ROOT_DIR}/server/login-service/target/lib/*" \
      --enable-native-access=ALL-UNNAMED \
-     catalyst.server.ServerApplication > server-e2e.log 2>&1 &
-SERVER_PID=$!
+     catalyst.server.login.LoginServiceApplication > login-e2e.log 2>&1 &
+LOGIN_PID=$!
+
+# Boot Lobby Service (Port 35562)
+LOBBY_JAR="${ROOT_DIR}/server/lobby-service/target/catalyst-lobby-service-1.0-SNAPSHOT.jar"
+export CATALYST_SERVER_PORT=35562
+java -cp "${LOBBY_JAR}:${ROOT_DIR}/server/lobby-service/target/lib/*" \
+     --enable-native-access=ALL-UNNAMED \
+     catalyst.server.lobby.LobbyServiceApplication > lobby-e2e.log 2>&1 &
+LOBBY_PID=$!
+
+# Boot World Service (Port 35563)
+WORLD_JAR="${ROOT_DIR}/server/world-service/target/catalyst-world-service-1.0-SNAPSHOT.jar"
+export CATALYST_SERVER_PORT=35563
+java -cp "${WORLD_JAR}:${ROOT_DIR}/server/world-service/target/lib/*" \
+     --enable-native-access=ALL-UNNAMED \
+     catalyst.server.world.WorldServiceApplication > world-e2e.log 2>&1 &
+WORLD_PID=$!
+
+# Boot Gateway Service (Port TEST_PORT)
+GATEWAY_JAR="${ROOT_DIR}/gateway/target/catalyst-gateway-1.0-SNAPSHOT.jar"
+export CATALYST_GATEWAY_PORT="${TEST_PORT}"
+java -cp "${GATEWAY_JAR}:${ROOT_DIR}/gateway/target/lib/*" \
+     --enable-native-access=ALL-UNNAMED \
+     catalyst.gateway.GatewayApplication > gateway-e2e.log 2>&1 &
+GATEWAY_PID=$!
 
 function cleanup {
   echo "[e2e] cleaning up background processes..."
-  kill -9 "${SERVER_PID}" || true
+  kill -9 "${LOGIN_PID}" "${LOBBY_PID}" "${WORLD_PID}" "${GATEWAY_PID}" || true
   docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT

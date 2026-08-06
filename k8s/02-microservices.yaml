@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: login-service
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: login-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: login-service
+spec:
+  selector:
+    matchLabels:
+      app: login-service
+  template:
+    metadata:
+      labels:
+        app: login-service
+    spec:
+      tolerations:
+        - key: "node.kubernetes.io/disk-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: login-service
+          image: catalyst-catalyst-login-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 35556
+              protocol: UDP
+          env:
+            - name: CATALYST_DB_URL
+              value: "jdbc:postgresql://postgres:5432/catalyst"
+            - name: CATALYST_DB_USERNAME
+              value: "catalyst"
+            - name: CATALYST_DB_PASSWORD
+              value: "catalyst"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lobby-service
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: lobby-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lobby-service
+spec:
+  selector:
+    matchLabels:
+      app: lobby-service
+  template:
+    metadata:
+      labels:
+        app: lobby-service
+    spec:
+      tolerations:
+        - key: "node.kubernetes.io/disk-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: lobby-service
+          image: catalyst-catalyst-lobby-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 35556
+              protocol: UDP
+          env:
+            - name: CATALYST_DB_URL
+              value: "jdbc:postgresql://postgres:5432/catalyst"
+            - name: CATALYST_DB_USERNAME
+              value: "catalyst"
+            - name: CATALYST_DB_PASSWORD
+              value: "catalyst"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: world-service
+spec:
+  selector:
+    matchLabels:
+      app: world-service
+  template:
+    metadata:
+      labels:
+        app: world-service
+    spec:
+      tolerations:
+        - key: "node.kubernetes.io/disk-pressure"
+          operator: "Exists"
+          effect: "NoSchedule"
+      containers:
+        - name: world-service
+          image: catalyst-catalyst-world-service:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 35556
+              protocol: UDP
+          env:
+            - name: CATALYST_DB_URL
+              value: "jdbc:postgresql://postgres:5432/catalyst"
+            - name: CATALYST_DB_USERNAME
+              value: "catalyst"
+            - name: CATALYST_DB_PASSWORD
+              value: "catalyst"

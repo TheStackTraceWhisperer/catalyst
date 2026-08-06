@@ -1,13 +1,13 @@
 micronaut:
-  banner:
-    enabled: false
+  application:
+    name: catalyst-gateway
 
 catalyst:
   gateway:
-    port: 35555 # Public client UDP port
-    login-service-host: localhost
-    login-service-port: 35561
-    lobby-service-host: localhost
-    lobby-service-port: 35562
-    world-service-host: localhost
-    world-service-port: 35563
+    port: 35555
+    login-service-host: ${CATALYST_GATEWAY_LOGIN_SERVICE_HOST}
+    login-service-port: ${CATALYST_GATEWAY_LOGIN_SERVICE_PORT}
+    lobby-service-host: ${CATALYST_GATEWAY_LOBBY_SERVICE_HOST}
+    lobby-service-port: ${CATALYST_GATEWAY_LOBBY_SERVICE_PORT}
+    world-service-host: ${CATALYST_GATEWAY_WORLD_SERVICE_HOST}
+    world-service-port: ${CATALYST_GATEWAY_WORLD_SERVICE_PORT}

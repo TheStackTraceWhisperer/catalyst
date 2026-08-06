@@ -19,7 +19,7 @@
 
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-    <maven.compiler.release>25</maven.compiler.release>
+    <maven.compiler.release>21</maven.compiler.release>
 
     <!-- Library versions -->
     <micronaut.version>4.5.0</micronaut.version>
@@ -153,6 +153,23 @@
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-dependency-plugin</artifactId>
           <version>${maven-dependency-plugin.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>com.google.cloud.tools</groupId>
+          <artifactId>jib-maven-plugin</artifactId>
+          <version>3.4.3</version>
+          <configuration>
+            <skip>true</skip>
+            <from>
+              <image>eclipse-temurin:21-jre</image> 
+            </from>
+            <to>
+              <image>catalyst-${project.artifactId}:latest</image>
+            </to>
+            <container>
+              <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+            </container>
+          </configuration>
         </plugin>
       </plugins>
     </pluginManagement>

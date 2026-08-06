@@ -9,10 +9,10 @@ import lombok.Setter;
 @ConfigurationProperties("catalyst.gateway")
 public class GatewayProperties {
     private int port = 35555;
-    private String loginServiceHost = "localhost";
-    private int loginServicePort = 35561;
-    private String lobbyServiceHost = "localhost";
-    private int lobbyServicePort = 35562;
-    private String worldServiceHost = "localhost";
-    private int worldServicePort = 35563;
+    private String loginServiceHost;
+    private int loginServicePort;
+    private String lobbyServiceHost;
+    private int lobbyServicePort;
+    private String worldServiceHost;
+    private int worldServicePort;
 }

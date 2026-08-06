@@ -46,9 +46,9 @@ public final class GatewayServer {
 
     public GatewayServer(GatewayProperties props) {
         this.props = props;
-        this.loginClient = new QuicGatewayClient(props.getLoginServiceHost(), props.getLoginServicePort());
-        this.lobbyClient = new QuicGatewayClient(props.getLobbyServiceHost(), props.getLobbyServicePort());
-        this.worldClient = new QuicGatewayClient(props.getWorldServiceHost(), props.getWorldServicePort());
+        this.loginClient = new QuicGatewayClient(props.getLoginhost(), props.getLoginport());
+        this.lobbyClient = new QuicGatewayClient(props.getLobbyhost(), props.getLobbyport());
+        this.worldClient = new QuicGatewayClient(props.getWorldhost(), props.getWorldport());
     }
 
     public void start() throws Exception {
@@ -191,7 +191,7 @@ public final class GatewayServer {
                         // (If your Lobby doesn't send this yet, it falls back to the default property)
                         String worldAddress = response.fields().get("worldAddress");
                         if (worldAddress == null) {
-                            worldAddress = props.getWorldServiceHost() + ":" + props.getWorldServicePort();
+                            worldAddress = props.getWorldhost() + ":" + props.getWorldport();
                         }
                         
                         if (sessionId != null) {
@@ -214,7 +214,7 @@ public final class GatewayServer {
                         String host = parts[0];
                         int port = Integer.parseInt(parts[1]);
                         
-                        if (host.equals(props.getWorldServiceHost()) && port == props.getWorldServicePort()) {
+                        if (host.equals(props.getWorldhost()) && port == props.getWorldport()) {
                             response = worldClient.request(type, request.fields());
                         } else {
                             // FIX 2: Fetch existing connection from pool, or create it ONCE

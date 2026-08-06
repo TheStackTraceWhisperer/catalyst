@@ -23,6 +23,9 @@ public class GatewayApplication {
 
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
+        log.info("GATEWAY_PROPS: loginhost={}, loginport={}", props.getLoginhost(), props.getLoginport());
+        log.info("GATEWAY_PROPS: lobbyhost={}, lobbyport={}", props.getLobbyhost(), props.getLobbyport());
+        log.info("GATEWAY_PROPS: worldhost={}, worldport={}", props.getWorldhost(), props.getWorldport());
         server.start();
         log.info("Gateway Service started on port {}", props.getPort());
         server.awaitShutdown();

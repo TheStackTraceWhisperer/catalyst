@@ -36,15 +36,15 @@ spec:
             - containerPort: 35555
               protocol: UDP
           env:
-            - name: CATALYST_GATEWAY_LOGIN_SERVICE_HOST
+            - name: CATALYST_GATEWAY_LOGINHOST
               value: "login-service"
-            - name: CATALYST_GATEWAY_LOGIN_SERVICE_PORT
+            - name: CATALYST_GATEWAY_LOGINPORT
               value: "35556"
-            - name: CATALYST_GATEWAY_LOBBY_SERVICE_HOST
+            - name: CATALYST_GATEWAY_LOBBYHOST
               value: "lobby-service"
-            - name: CATALYST_GATEWAY_LOBBY_SERVICE_PORT
+            - name: CATALYST_GATEWAY_LOBBYPORT
               value: "35556"
-            - name: CATALYST_GATEWAY_WORLD_SERVICE_HOST
+            - name: CATALYST_GATEWAY_WORLDHOST
               value: "world-service"
-            - name: CATALYST_GATEWAY_WORLD_SERVICE_PORT
+            - name: CATALYST_GATEWAY_WORLDPORT
               value: "35556"

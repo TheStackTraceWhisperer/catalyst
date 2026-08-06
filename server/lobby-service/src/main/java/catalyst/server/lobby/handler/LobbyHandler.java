@@ -6,6 +6,7 @@ import catalyst.common.dto.*;
 import catalyst.server.lobby.repository.CharacterRepository;
 import catalyst.server.lobby.repository.SessionRepository;
 import catalyst.server.lobby.repository.AuthTicketStore;
+import catalyst.server.lobby.config.ServerProperties;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,6 +45,7 @@ public class LobbyHandler {
     private final CharacterRepository characters;
     private final SessionRepository sessions;
     private final AuthTicketStore tickets;
+    private final ServerProperties props;
     private final Random rng = new Random();
 
     public MessageFrame handleList(MessageFrame reqFrame) {
@@ -297,6 +299,87 @@ public class LobbyHandler {
                 .message("Failed to delete character")
                 .build();
             return ProtocolMapper.fromCharDeleteResponse(resp);
+        }
+    }
+
+    public MessageFrame handlePlay(MessageFrame reqFrame) {
+        PlayRequest req;
+        try {
+            req = ProtocolMapper.toPlayRequest(reqFrame);
+        } catch (IllegalArgumentException e) {
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message(e.getMessage())
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        }
+
+        Long accountId = tickets.validate(req.getAuthToken());
+        if (accountId == null) {
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.UNAUTHORIZED)
+                .message("Invalid or expired auth token")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        }
+        long charId = req.getCharacterId();
+        if (charId <= 0) {
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.CONFLICT)
+                .message("characterId required")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        }
+        try {
+            var identity = characters.findActiveByIdAndAccount(charId, accountId);
+            if (identity.isEmpty()) {
+                PlayResponse resp = PlayResponse.builder()
+                    .code(ResponseCode.NOT_FOUND)
+                    .message("Character not found")
+                    .build();
+                return ProtocolMapper.fromPlayResponse(resp);
+            }
+            var id = identity.get();
+            String sessionId;
+            try {
+                sessionId = sessions.create(accountId, charId, id.currentZoneId());
+            } catch (SQLException e) {
+                if ("23505".equals(e.getSQLState())) {
+                    log.info("PLAY_ERR account={} charId={} reason=already_online", accountId, charId);
+                    PlayResponse resp = PlayResponse.builder()
+                        .code(ResponseCode.CONFLICT)
+                        .message("Account or character is already online")
+                        .build();
+                    return ProtocolMapper.fromPlayResponse(resp);
+                }
+                throw e;
+            }
+            int pop = sessions.getZonePopulation(id.currentZoneId());
+            log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, sessionId, id.currentZoneId(), pop);
+            
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.OK)
+                .sessionId(sessionId)
+                .accountId(accountId)
+                .characterId(charId)
+                .characterName(id.name())
+                .zoneId(id.currentZoneId())
+                .playersInZone(pop)
+                .keepaliveIntervalMs(props.getKeepaliveIntervalMs())
+                .homeZoneId(id.homeZoneId())
+                .x(id.currentX())
+                .y(id.currentY())
+                .z(id.currentZ())
+                .rot(id.currentHeading())
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
+        } catch (SQLException e) {
+            log.error("PLAY_ERR account={} charId={}", accountId, charId, e);
+            PlayResponse resp = PlayResponse.builder()
+                .code(ResponseCode.ERROR)
+                .message("Failed to enter world")
+                .build();
+            return ProtocolMapper.fromPlayResponse(resp);
         }
     }
 

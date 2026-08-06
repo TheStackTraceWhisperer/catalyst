@@ -38,6 +38,7 @@ public class LobbyServiceApplication {
             case "CHAR_CREATE" -> lobbyHandler.handleCreate(req);
             case "CHAR_SELECT" -> lobbyHandler.handleSelect(req);
             case "CHAR_DELETE" -> lobbyHandler.handleDelete(req);
+            case "PLAY"        -> lobbyHandler.handlePlay(req);
             default            -> MessageFrame.builder("ERROR")
                                     .put("code", "UNKNOWN_REQUEST")
                                     .put("message", "Lobby Service unsupported: " + req.type())

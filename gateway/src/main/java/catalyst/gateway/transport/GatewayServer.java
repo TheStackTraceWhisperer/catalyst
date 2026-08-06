@@ -37,6 +37,9 @@ public final class GatewayServer {
     private final QuicGatewayClient lobbyClient;
     private final QuicGatewayClient worldClient;
     private final Map<String, String> sessionRoutes = new ConcurrentHashMap<>();
+    
+    // NEW: Connection pool for dynamic world servers to prevent EventLoop leaks
+    private final Map<String, QuicGatewayClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
     private EventLoopGroup group;
     private Channel bindChannel;
@@ -66,7 +69,7 @@ public final class GatewayServer {
             .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
                 @Override
                 protected void initChannel(QuicStreamChannel ch) {
-                    ch.pipeline().addLast(new RequestHandler(props, loginClient, lobbyClient, worldClient, sessionRoutes));
+                    ch.pipeline().addLast(new RequestHandler(props, loginClient, lobbyClient, worldClient, sessionRoutes, dynamicWorldClients));
                 }
             })
             .build();
@@ -98,6 +101,11 @@ public final class GatewayServer {
         loginClient.close();
         lobbyClient.close();
         worldClient.close();
+        
+        // Clean up the dynamic pool
+        dynamicWorldClients.values().forEach(QuicGatewayClient::close);
+        dynamicWorldClients.clear();
+        
         sessionRoutes.clear();
     }
 
@@ -107,18 +115,21 @@ public final class GatewayServer {
         private final QuicGatewayClient lobbyClient;
         private final QuicGatewayClient worldClient;
         private final Map<String, String> sessionRoutes;
+        private final Map<String, QuicGatewayClient> dynamicWorldClients;
         private final StringBuilder lineBuffer = new StringBuilder();
 
         RequestHandler(GatewayProperties props,
                        QuicGatewayClient loginClient,
                        QuicGatewayClient lobbyClient,
                        QuicGatewayClient worldClient,
-                       Map<String, String> sessionRoutes) {
+                       Map<String, String> sessionRoutes,
+                       Map<String, QuicGatewayClient> dynamicWorldClients) {
             this.props = props;
             this.loginClient = loginClient;
             this.lobbyClient = lobbyClient;
             this.worldClient = worldClient;
             this.sessionRoutes = sessionRoutes;
+            this.dynamicWorldClients = dynamicWorldClients;
         }
 
         @Override
@@ -170,13 +181,23 @@ public final class GatewayServer {
                     return lobbyClient.request(type, request.fields());
 
                 case "PLAY": {
-                    MessageFrame response = worldClient.request(type, request.fields());
+                    // FIX 1: Forward to Lobby Service, NOT World Service
+                    MessageFrame response = lobbyClient.request(type, request.fields());
+                    
                     if ("PLAY_OK".equals(response.type()) || "OK".equals(response.fields().get("code"))) {
                         String sessionId = response.fields().get("sessionId");
+                        
+                        // Extract the assigned world address from the Lobby's response.
+                        // (If your Lobby doesn't send this yet, it falls back to the default property)
+                        String worldAddress = response.fields().get("worldAddress");
+                        if (worldAddress == null) {
+                            worldAddress = props.getWorldServiceHost() + ":" + props.getWorldServicePort();
+                        }
+                        
                         if (sessionId != null) {
                             // Register session route
-                            String worldAddr = props.getWorldServiceHost() + ":" + props.getWorldServicePort();
-                            sessionRoutes.put(sessionId, worldAddr);
+                            sessionRoutes.put(sessionId, worldAddress);
+                            log.info("Session {} routed to {}", sessionId, worldAddress);
                         }
                     }
                     return response;
@@ -187,20 +208,28 @@ public final class GatewayServer {
                     String sessionId = request.fields().get("sessionId");
                     String target = sessionId != null ? sessionRoutes.get(sessionId) : null;
                     MessageFrame response;
+                    
                     if (target != null) {
                         String[] parts = target.split(":");
                         String host = parts[0];
                         int port = Integer.parseInt(parts[1]);
+                        
                         if (host.equals(props.getWorldServiceHost()) && port == props.getWorldServicePort()) {
                             response = worldClient.request(type, request.fields());
                         } else {
-                            try (QuicGatewayClient dynamicClient = new QuicGatewayClient(host, port)) {
-                                response = dynamicClient.request(type, request.fields());
-                            }
+                            // FIX 2: Fetch existing connection from pool, or create it ONCE
+                            QuicGatewayClient targetClient = dynamicWorldClients.computeIfAbsent(
+                                target, k -> {
+                                    log.info("Opening new persistent internal connection to {}", target);
+                                    return new QuicGatewayClient(host, port);
+                                }
+                            );
+                            response = targetClient.request(type, request.fields());
                         }
                     } else {
                         response = worldClient.request(type, request.fields());
                     }
+                    
                     if ("LOGOUT".equals(type) && sessionId != null) {
                         sessionRoutes.remove(sessionId);
                     }

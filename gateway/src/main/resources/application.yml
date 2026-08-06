@@ -5,9 +5,3 @@ micronaut:
 catalyst:
   gateway:
     port: 35555
-    login-service-host: ${CATALYST_GATEWAY_LOGIN_SERVICE_HOST}
-    login-service-port: ${CATALYST_GATEWAY_LOGIN_SERVICE_PORT}
-    lobby-service-host: ${CATALYST_GATEWAY_LOBBY_SERVICE_HOST}
-    lobby-service-port: ${CATALYST_GATEWAY_LOBBY_SERVICE_PORT}
-    world-service-host: ${CATALYST_GATEWAY_WORLD_SERVICE_HOST}
-    world-service-port: ${CATALYST_GATEWAY_WORLD_SERVICE_PORT}

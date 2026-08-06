@@ -26,6 +26,7 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -35,16 +36,18 @@ public final class QuicGatewayClient implements AutoCloseable {
 
     private final String host;
     private final int port;
+    private final ReentrantLock connectionLock = new ReentrantLock();
+
     private EventLoopGroup group;
     private Channel udpChannel;
-    private QuicChannel quicChannel;
+    private volatile QuicChannel quicChannel;
 
     public QuicGatewayClient(String host, int port) {
         this.host = host;
         this.port = port;
     }
 
-    public synchronized MessageFrame request(String type, Map<String, String> fields) throws IOException {
+    public MessageFrame request(String type, Map<String, String> fields) throws IOException {
         try {
             ensureConnected();
             return sendOnStream(type, fields);
@@ -58,7 +61,7 @@ public final class QuicGatewayClient implements AutoCloseable {
     }
 
     @Override
-    public synchronized void close() {
+    public void close() {
         closeConnection();
     }
 
@@ -66,40 +69,50 @@ public final class QuicGatewayClient implements AutoCloseable {
         if (quicChannel != null && quicChannel.isOpen()) {
             return;
         }
-        closeConnection();
 
-        QuicSslContext sslContext = QuicSslContextBuilder.forClient()
-            .trustManager(InsecureTrustManagerFactory.INSTANCE)
-            .applicationProtocols(PROTOCOL)
-            .build();
+        connectionLock.lock();
+        try {
+            if (quicChannel != null && quicChannel.isOpen()) {
+                return;
+            }
 
-        group = new NioEventLoopGroup(1);
-        io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()
-            .sslEngineProvider(q -> sslContext.newEngine(q.alloc(), host, port))
-            .maxIdleTimeout(60, TimeUnit.SECONDS)
-            .initialMaxData(10_000_000)
-            .initialMaxStreamDataBidirectionalLocal(1_000_000)
-            .initialMaxStreamDataBidirectionalRemote(1_000_000)
-            .initialMaxStreamsBidirectional(256)
-            .build();
+            closeConnectionLocked();
 
-        udpChannel = new Bootstrap()
-            .group(group)
-            .channel(NioDatagramChannel.class)
-            .handler(codec)
-            .bind(0)
-            .sync()
-            .channel();
+            QuicSslContext sslContext = QuicSslContextBuilder.forClient()
+                .trustManager(InsecureTrustManagerFactory.INSTANCE)
+                .applicationProtocols(PROTOCOL)
+                .build();
 
-        quicChannel = QuicChannel.newBootstrap(udpChannel)
-            .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
-                @Override
-                protected void initChannel(QuicStreamChannel ch) {
-                }
-            })
-            .remoteAddress(new InetSocketAddress(host, port))
-            .connect()
-            .get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+            group = new NioEventLoopGroup(1);
+            io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()
+                .sslEngineProvider(q -> sslContext.newEngine(q.alloc(), host, port))
+                .maxIdleTimeout(60, TimeUnit.SECONDS)
+                .initialMaxData(10_000_000)
+                .initialMaxStreamDataBidirectionalLocal(1_000_000)
+                .initialMaxStreamDataBidirectionalRemote(1_000_000)
+                .initialMaxStreamsBidirectional(256)
+                .build();
+
+            udpChannel = new Bootstrap()
+                .group(group)
+                .channel(NioDatagramChannel.class)
+                .handler(codec)
+                .bind(0)
+                .sync()
+                .channel();
+
+            quicChannel = QuicChannel.newBootstrap(udpChannel)
+                .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
+                    @Override
+                    protected void initChannel(QuicStreamChannel ch) {
+                    }
+                })
+                .remoteAddress(new InetSocketAddress(host, port))
+                .connect()
+                .get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
+        } finally {
+            connectionLock.unlock();
+        }
     }
 
     private MessageFrame sendOnStream(String type, Map<String, String> fields) throws Exception {
@@ -123,6 +136,15 @@ public final class QuicGatewayClient implements AutoCloseable {
     }
 
     private void closeConnection() {
+        connectionLock.lock();
+        try {
+            closeConnectionLocked();
+        } finally {
+            connectionLock.unlock();
+        }
+    }
+
+    private void closeConnectionLocked() {
         try {
             if (quicChannel != null) {
                 quicChannel.close().sync();

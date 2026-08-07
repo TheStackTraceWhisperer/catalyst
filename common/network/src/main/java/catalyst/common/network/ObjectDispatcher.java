@@ -18,6 +18,27 @@ public class ObjectDispatcher {
     
     private final Map<Class<?>, Function<Object, Object>> handlers = new HashMap<>();
     
+    /** Registers all handlers in the collection. */
+    public void registerAll(java.util.Collection<PacketHandler<?>> packetHandlers) {
+        if (packetHandlers != null) {
+            for (PacketHandler<?> ph : packetHandlers) {
+                registerInternal(ph);
+            }
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private <T> void registerInternal(PacketHandler<T> handler) {
+        handlers.put(handler.getPacketType(), (Function<Object, Object>) req -> {
+            try {
+                return handler.handle((T) req);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+        });
+        log.info("Registered PacketHandler for {}", handler.getPacketType().getSimpleName());
+    }
+
     /**
      * Registers a handler for a specific request type.
      * 

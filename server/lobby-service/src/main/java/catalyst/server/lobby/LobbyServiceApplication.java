@@ -1,9 +1,8 @@
 package catalyst.server.lobby;
 
 import catalyst.common.network.ObjectDispatcher;
-import catalyst.common.dto.*;
+import catalyst.common.network.PacketHandler;
 import catalyst.server.lobby.properties.ServerProperties;
-import catalyst.server.lobby.handler.LobbyHandler;
 import catalyst.server.lobby.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;
 import io.micronaut.context.event.StartupEvent;
@@ -11,9 +10,7 @@ import io.micronaut.runtime.event.annotation.EventListener;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
-import catalyst.common.network.GatewayControlMessage;
-import catalyst.common.network.ResponseCode;
+import java.util.List;
 
 @Slf4j
 @Singleton
@@ -21,7 +18,7 @@ import catalyst.common.network.ResponseCode;
 public class LobbyServiceApplication {
 
     private final QuicServerTransport transport;
-    private final LobbyHandler lobbyHandler;
+    private final List<PacketHandler<?>> packetHandlers;
     private final ServerProperties props;
 
     public static void main(String[] args) {
@@ -31,20 +28,7 @@ public class LobbyServiceApplication {
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
         ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.register(CharListRequest.class, lobbyHandler::handleList);
-        dispatcher.register(CharCreateRequest.class, lobbyHandler::handleCreate);
-        dispatcher.register(CharSelectRequest.class, lobbyHandler::handleSelect);
-        dispatcher.register(CharDeleteRequest.class, lobbyHandler::handleDelete);
-        dispatcher.register(PlayRequest.class, req -> {
-            PlayResponse resp = lobbyHandler.handlePlay(req);
-            if (resp.code() == ResponseCode.OK) {
-                return new Object[] {
-                    new GatewayControlMessage("play_success", resp.sessionId(), "DEFAULT"),
-                    resp
-                };
-            }
-            return resp;
-        });
+        dispatcher.registerAll(packetHandlers);
 
         transport.setDispatcher(dispatcher::dispatch);
         try {

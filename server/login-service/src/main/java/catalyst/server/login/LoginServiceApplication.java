@@ -2,9 +2,9 @@ package catalyst.server.login;
 
 import catalyst.common.concurrency.TaskScheduler;
 import catalyst.common.network.ObjectDispatcher;
-import catalyst.common.dto.LoginRequest;
+import catalyst.common.network.PacketHandler;
 import catalyst.server.login.properties.ServerProperties;
-import catalyst.server.login.handler.LoginHandler;
+import catalyst.server.login.handler.LoginRequestHandler;
 import catalyst.server.login.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;
 import io.micronaut.context.event.StartupEvent;
@@ -12,14 +12,10 @@ import io.micronaut.runtime.event.annotation.EventListener;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
+import java.util.List;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
-
-import catalyst.common.network.GatewayControlMessage;
-import catalyst.common.network.ResponseCode;
-import catalyst.common.dto.LoginResponse;
 
 @Slf4j
 @Singleton
@@ -27,7 +23,8 @@ import catalyst.common.dto.LoginResponse;
 public class LoginServiceApplication {
 
     private final QuicServerTransport transport;
-    private final LoginHandler loginHandler;
+    private final LoginRequestHandler loginHandler;
+    private final List<PacketHandler<?>> packetHandlers;
     private final ServerProperties props;
     private final DataSource dataSource;
     private final TaskScheduler scheduler;
@@ -43,16 +40,7 @@ public class LoginServiceApplication {
         schedulePeriodicPruning();
 
         ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.register(LoginRequest.class, req -> {
-            LoginResponse resp = loginHandler.handle(req);
-            if (resp.code() == ResponseCode.OK) {
-                return new Object[] {
-                    new GatewayControlMessage("auth_success", resp.authToken(), null),
-                    resp
-                };
-            }
-            return resp;
-        });
+        dispatcher.registerAll(packetHandlers);
 
         transport.setDispatcher(dispatcher::dispatch);
         try {

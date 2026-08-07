@@ -1,6 +1,7 @@
 package catalyst.server.login.handler;
 
 import catalyst.common.network.ResponseCode;
+import catalyst.common.network.PacketHandler;
 import catalyst.common.dto.LoginRequest;
 import catalyst.common.dto.LoginResponse;
 import catalyst.server.login.properties.ServerProperties;
@@ -11,13 +12,14 @@ import de.mkammerer.argon2.Argon2Factory;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-
 import java.sql.SQLException;
+
+import catalyst.common.network.GatewayControlMessage;
 
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
-public class LoginHandler {
+public class LoginRequestHandler implements PacketHandler<LoginRequest> {
 
     private static final Argon2 ARGON2 = Argon2Factory.create();
 
@@ -25,7 +27,13 @@ public class LoginHandler {
     private final AuthTicketStore tickets;
     private final ServerProperties props;
 
-    public LoginResponse handle(LoginRequest req) {
+    @Override
+    public Class<LoginRequest> getPacketType() {
+        return LoginRequest.class;
+    }
+
+    @Override
+    public Object handle(LoginRequest req) {
         String username = normalize(req.username());
         String password = normalize(req.password());
         if (username.isBlank() || password.isBlank()) {
@@ -49,7 +57,10 @@ public class LoginHandler {
             String token = tickets.issue(account.id());
             log.info("LOGIN_OK user={} account={}", username, account.id());
 
-            return new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id());
+            return new Object[] {
+                new GatewayControlMessage("auth_success", token, null),
+                new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id())
+            };
         } catch (SQLException e) {
             log.error("LOGIN_ERR user={} reason=db_error", username, e);
             return error(ResponseCode.ERROR, "Authentication backend unavailable");

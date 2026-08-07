@@ -28,22 +28,20 @@ import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @Singleton
+@RequiredArgsConstructor
 public final class QuicServerTransport {
     static final String PROTOCOL = "catalyst-1";
 
-    private final int port;
+    private final ServerProperties props;
     private Function<MessageFrame, MessageFrame> dispatcher = req ->
         MessageFrame.builder("ERROR").put("code","NOT_READY").put("message","Dispatcher not set").build();
     private EventLoopGroup group;
     private Channel bindChannel;
-
-    QuicServerTransport(ServerProperties props) {
-        this.port = props.getPort();
-    }
 
     public void setDispatcher(Function<MessageFrame, MessageFrame> dispatcher) {
         this.dispatcher = dispatcher;
@@ -76,11 +74,11 @@ public final class QuicServerTransport {
             .group(group)
             .channel(NioDatagramChannel.class)
             .handler(codec)
-            .bind(new InetSocketAddress(port))
+            .bind(new InetSocketAddress(props.getPort()))
             .sync()
             .channel();
 
-        log.info("QUIC server bound on UDP port {}", port);
+        log.info("QUIC server bound on UDP port {}", props.getPort());
     }
 
     public void awaitShutdown() throws InterruptedException {

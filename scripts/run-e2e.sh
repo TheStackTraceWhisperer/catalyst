@@ -73,7 +73,7 @@ echo "[e2e] Building postgres image..."
 docker build -t catalyst-postgres:17 docker/postgres
 
 echo "[e2e] Compiling and containerizing microservices with Jib..."
-"${MVN}" -q -DskipTests clean install jib:dockerBuild
+"${MVN}" -q -DskipTests clean package jib:dockerBuild
 
 # 5. Import images into k3d
 echo "[e2e] Importing images into k3d..."
@@ -100,7 +100,6 @@ kubectl rollout status deployment/gateway --timeout=90s
 
 # 8. Execute E2E harness
 echo "[e2e] Running protocol validation test client..."
-"${MVN}" compile -pl tests -am
-"${MVN}" exec:java -pl tests -Dexec.mainClass="catalyst.tests.e2e.E2EValidationHarness" -Dexec.args="localhost ${TEST_PORT}"
+java --enable-native-access=ALL-UNNAMED -jar tests/target/catalyst-tests-1.0-SNAPSHOT.jar localhost "${TEST_PORT}"
 
 echo "[e2e] E2E validation passed successfully!"

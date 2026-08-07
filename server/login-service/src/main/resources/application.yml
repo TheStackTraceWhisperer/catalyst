@@ -1,20 +1,3 @@
 micronaut:
   application:
     name: catalyst-login-service
-
-catalyst:
-  server:
-    port: 35556
-    session-timeout-seconds: 30
-    auth-ticket-timeout-seconds: 300
-    argon2-iterations: 3
-    argon2-memory-kib: 65536
-    argon2-parallelism: 1
-    keepalive-interval-ms: 5000
-
-datasources:
-  default:
-    url: ${CATALYST_DB_URL}
-    username: ${CATALYST_DB_USERNAME}
-    password: ${CATALYST_DB_PASSWORD}
-    driver-class-name: org.postgresql.Driver

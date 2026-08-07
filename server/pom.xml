@@ -15,6 +15,7 @@
   <packaging>pom</packaging>
 
   <modules>
+    <module>server-common</module>
     <module>login-service</module>
     <module>lobby-service</module>
     <module>world-service</module>

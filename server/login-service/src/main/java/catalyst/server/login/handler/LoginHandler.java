@@ -7,7 +7,7 @@ import catalyst.common.dto.LoginResponse;
 import catalyst.common.dto.ProtocolMapper;
 import catalyst.server.login.config.ServerProperties;
 import catalyst.server.login.repository.AccountRepository;
-import catalyst.server.login.repository.AuthTicketStore;
+import catalyst.server.common.repository.AuthTicketStore;
 import de.mkammerer.argon2.Argon2;
 import de.mkammerer.argon2.Argon2Factory;
 import jakarta.inject.Singleton;

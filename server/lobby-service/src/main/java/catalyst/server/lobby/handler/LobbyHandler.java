@@ -5,7 +5,7 @@ import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.*;
 import catalyst.server.lobby.repository.CharacterRepository;
 import catalyst.server.lobby.repository.SessionRepository;
-import catalyst.server.lobby.repository.AuthTicketStore;
+import catalyst.server.common.repository.AuthTicketStore;
 import catalyst.server.lobby.config.ServerProperties;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;

@@ -17,6 +17,11 @@
   <dependencies>
     <dependency>
       <groupId>catalyst</groupId>
+      <artifactId>catalyst-server-common</artifactId>
+      <version>${project.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>catalyst</groupId>
       <artifactId>catalyst-common-network</artifactId>
       <version>${project.version}</version>
     </dependency>

@@ -1,4 +1,4 @@
-package catalyst.server.login.repository;
+package catalyst.server.common.repository;
 
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -41,7 +41,7 @@ public class AuthTicketStore {
             
             long accountId = -1;
             try (PreparedStatement s = c.prepareStatement(
-                "SELECT account_id FROM accounts_auth_tokens WHERE token = ? AND expires_at > NOW()")) {
+                 "SELECT account_id FROM accounts_auth_tokens WHERE token = ? AND expires_at > NOW()")) {
                 s.setObject(1, uuid);
                 try (ResultSet rs = s.executeQuery()) {
                     if (!rs.next()) return null;
@@ -52,7 +52,7 @@ public class AuthTicketStore {
             // Rolling update: extend expiration
             long newExpiry = System.currentTimeMillis() + 1800000; // 30 mins
             try (PreparedStatement s = c.prepareStatement(
-                "UPDATE accounts_auth_tokens SET expires_at = ? WHERE token = ?")) {
+                 "UPDATE accounts_auth_tokens SET expires_at = ? WHERE token = ?")) {
                 s.setTimestamp(1, new Timestamp(newExpiry));
                 s.setObject(2, uuid);
                 s.executeUpdate();

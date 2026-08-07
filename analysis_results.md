@@ -30,17 +30,13 @@ We will implement the dispatching model defined in the [Phase 2.5 Concurrency Di
 graph TD
     Client["Client Connection"] -->|GatewayFrame| GW["Gateway Server"]
     
-    subgraph "Stateless Services (Login / Lobby)"
-        GW -->|Login / Lobby Frame| NettyStateless["Netty EventLoop"]
-        NettyStateless -->|Immediate Offload| VT["Virtual Threads"]
-        VT -->|JDBC DB Call| DB[("JDBC PostgreSQL")]
-    end
-
-    subgraph "Stateful Services (World)"
-        GW -->|World Frame| NettyStateful["Netty EventLoop"]
-        NettyStateful -->|Instant Queue| Queue["Zone Queue"]
-        Loop["10Hz Tick Loop"] -->|Poll & Execute| Queue
-    end
+    GW -->|Login/Lobby Frame| NettyStateless["Netty EventLoop (Stateless)"]
+    NettyStateless -->|Immediate Offload| VT["Virtual Threads"]
+    VT -->|JDBC DB Call| DB[("JDBC PostgreSQL")]
+    
+    GW -->|World Frame| NettyStateful["Netty EventLoop (Stateful)"]
+    NettyStateful -->|Instant Queue| Queue["Zone Queue"]
+    Loop["10Hz Tick Loop"] -->|Poll & Execute| Queue
 ```
 
 #### 1. Stateless Dispatching (Login & Lobby Services)

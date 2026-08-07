@@ -59,23 +59,23 @@ To allow the gateway to read routing intents and session updates without deseria
 
 ## 📋 Implementation Task List
 
-- [ ] **Step 1: Define Transport Framing & Shared Classes**
+- [x] **Step 1: Define Transport Framing & Shared Classes**
   - Define `GatewayFrame` structure in `common/network`.
   - Create a new unified `GatewayPacketDecoder` and `GatewayPacketEncoder` that replaces `ForyDecoder` and `ForyEncoder` in the gateway pipeline.
 
-- [ ] **Step 2: Update Backend Service Responses (Signaling)**
+- [x] **Step 2: Update Backend Service Responses (Signaling)**
   - Update `LoginHandler` to return authentication status in the transport metadata header.
   - Update `LobbyHandler` to return the assigned `worldAddress` in the transport metadata header during the `PLAY` phase response.
 
-- [ ] **Step 3: Refactor Gateway Server pipeline**
+- [x] **Step 3: Refactor Gateway Server pipeline**
   - Remove `RawFrameCaptureHandler` and the `PENDING_FRAMES` channel attribute.
   - Implement the `GatewayConnectionState` machine using Netty channel attributes.
   - Bind client connections to target backend QUIC clients dynamically based on state transitions.
 
-- [ ] **Step 4: Decouple Gateway from Application DTOs**
+- [x] **Step 4: Decouple Gateway from Application DTOs**
   - Delete all DTO imports (`LoginRequest`, `PlayResponse`, etc.) from `GatewayServer`.
   - Replace reflection calls (`getMethod("worldAddress")`) with transport header parses.
 
-- [ ] **Step 5: Update Game Client & E2E Validation Harness**
+- [x] **Step 5: Update Game Client & E2E Validation Harness**
   - Update client network stack to write the 1-byte service flags and read transition headers.
   - Verify that `E2EValidationHarness` runs successfully with stateful routing in place.

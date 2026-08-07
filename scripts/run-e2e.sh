@@ -90,6 +90,11 @@ kubectl apply -f k8s/01-postgres.yaml
 kubectl apply -f k8s/02-microservices.yaml
 kubectl apply -f k8s/03-gateway.yaml
 
+kubectl rollout restart deployment/login-service
+kubectl rollout restart deployment/lobby-service
+kubectl rollout restart deployment/world-service
+kubectl rollout restart deployment/gateway
+
 # 7. Wait for deployments to be ready
 echo "[e2e] Waiting for deployments to rollout..."
 kubectl rollout status deployment/postgres --timeout=90s

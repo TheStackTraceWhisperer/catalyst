@@ -1,7 +1,14 @@
 micronaut:
   application:
     name: catalyst-gateway
+  server:
+    port: 8080
 
 catalyst:
   gateway:
     port: 35555
+
+endpoints:
+  health:
+    enabled: true
+    sensitive: false

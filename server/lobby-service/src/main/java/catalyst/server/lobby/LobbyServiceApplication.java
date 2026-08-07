@@ -27,9 +27,15 @@ public class LobbyServiceApplication {
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
         transport.setDispatcher(this::dispatch);
-        transport.start();
-        log.info("Lobby Service listening on UDP port {} (QUIC)", props.getPort());
-        transport.awaitShutdown();
+        Thread.ofVirtual().start(() -> {
+            try {
+                transport.start();
+                log.info("Lobby Service listening on UDP port {} (QUIC)", props.getPort());
+                transport.awaitShutdown();
+            } catch (Exception e) {
+                log.error("Failed to start Lobby transport", e);
+            }
+        });
     }
 
     private MessageFrame dispatch(MessageFrame req) {

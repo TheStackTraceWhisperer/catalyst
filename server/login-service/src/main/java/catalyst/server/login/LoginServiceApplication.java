@@ -37,9 +37,15 @@ public class LoginServiceApplication {
         schedulePeriodicPruning();
 
         transport.setDispatcher(loginHandler::handle);
-        transport.start();
-        log.info("Login Service listening on UDP port {} (QUIC)", props.getPort());
-        transport.awaitShutdown();
+        Thread.ofVirtual().start(() -> {
+            try {
+                transport.start();
+                log.info("Login Service listening on UDP port {} (QUIC)", props.getPort());
+                transport.awaitShutdown();
+            } catch (Exception e) {
+                log.error("Failed to start Login transport", e);
+            }
+        });
     }
 
     private void schedulePeriodicPruning() {

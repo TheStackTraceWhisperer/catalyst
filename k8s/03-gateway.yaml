@@ -11,6 +11,19 @@ spec:
   selector:
     app: gateway
 ---
+apiVersion: v1
+kind: Service
+metadata:
+  name: gateway-management
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app: gateway
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -35,6 +48,15 @@ spec:
           ports:
             - containerPort: 35555
               protocol: UDP
+            - containerPort: 8080
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 2
+            failureThreshold: 5
           env:
             - name: CATALYST_GATEWAY_LOGINHOST
               value: "login-service"

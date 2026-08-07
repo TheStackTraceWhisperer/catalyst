@@ -34,9 +34,15 @@ public class WorldServiceApplication {
         schedulePeriodicPruning();
 
         transport.setDispatcher(dispatcher::dispatch);
-        transport.start();
-        log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
-        transport.awaitShutdown();
+        Thread.ofVirtual().start(() -> {
+            try {
+                transport.start();
+                log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
+                transport.awaitShutdown();
+            } catch (Exception e) {
+                log.error("Failed to start World transport", e);
+            }
+        });
     }
 
     private void schedulePeriodicPruning() {

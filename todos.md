@@ -1,5 +1,4 @@
 # Sooner
-* Apache Fory (Binary Serialization)
 * Cert-Manager (TLS Certificates)
 
 # Later
@@ -11,5 +10,5 @@
 # Maybe?
 * Keycloak (Authentication and Authorization)
 
-# No
-* ~~Micronaut R2DBC (Reactive Database Connectivity)~~
+# Done
+* Apache Fory (Binary Serialization)

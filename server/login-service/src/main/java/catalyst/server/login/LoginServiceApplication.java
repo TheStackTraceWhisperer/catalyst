@@ -42,15 +42,18 @@ public class LoginServiceApplication {
         dispatcher.register(LoginRequest.class, loginHandler::handle);
 
         transport.setDispatcher(dispatcher::dispatch);
-        Thread.ofVirtual().start(() -> {
-            try {
-                transport.start();
-                log.info("Login Service listening on UDP port {} (QUIC)", props.getPort());
-                transport.awaitShutdown();
-            } catch (Exception e) {
-                log.error("Failed to start Login transport", e);
-            }
-        });
+        try {
+            transport.start();
+            log.info("Login Service listening on UDP port {} (QUIC)", props.getPort());
+        } catch (Exception e) {
+            log.error("Failed to start Login transport", e);
+        }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        log.info("Stopping Login Service transport...");
+        transport.stop();
     }
 
     private void schedulePeriodicPruning() {

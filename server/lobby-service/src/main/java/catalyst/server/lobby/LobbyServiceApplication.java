@@ -35,14 +35,17 @@ public class LobbyServiceApplication {
         dispatcher.register(PlayRequest.class, lobbyHandler::handlePlay);
 
         transport.setDispatcher(dispatcher::dispatch);
-        Thread.ofVirtual().start(() -> {
-            try {
-                transport.start();
-                log.info("Lobby Service listening on UDP port {} (QUIC)", props.getPort());
-                transport.awaitShutdown();
-            } catch (Exception e) {
-                log.error("Failed to start Lobby transport", e);
-            }
-        });
+        try {
+            transport.start();
+            log.info("Lobby Service listening on UDP port {} (QUIC)", props.getPort());
+        } catch (Exception e) {
+            log.error("Failed to start Lobby transport", e);
+        }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        log.info("Stopping Lobby Service transport...");
+        transport.stop();
     }
 }

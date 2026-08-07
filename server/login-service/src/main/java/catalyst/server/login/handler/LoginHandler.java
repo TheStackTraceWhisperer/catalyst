@@ -19,6 +19,8 @@ import java.sql.SQLException;
 @RequiredArgsConstructor
 public class LoginHandler {
 
+    private static final Argon2 ARGON2 = Argon2Factory.create();
+
     private final AccountRepository accounts;
     private final AuthTicketStore tickets;
     private final ServerProperties props;
@@ -40,8 +42,7 @@ public class LoginHandler {
                 log.info("LOGIN_ERR user={} account={} reason=not_active", username, account.id());
                 return error(ResponseCode.UNAUTHORIZED, "Account is not active");
             }
-            Argon2 argon2 = Argon2Factory.create();
-            if (!argon2.verify(account.passwordHash(), password.toCharArray())) {
+            if (!ARGON2.verify(account.passwordHash(), password.toCharArray())) {
                 log.info("LOGIN_ERR user={} account={} reason=bad_password", username, account.id());
                 return error(ResponseCode.UNAUTHORIZED, "Invalid username or password");
             }
@@ -61,8 +62,7 @@ public class LoginHandler {
                 log.info("Bootstrap account 'dev' already present");
                 return;
             }
-            Argon2 argon2 = Argon2Factory.create();
-            String hash = argon2.hash(props.getArgon2Iterations(), props.getArgon2MemoryKib(),
+            String hash = ARGON2.hash(props.getArgon2Iterations(), props.getArgon2MemoryKib(),
                 props.getArgon2Parallelism(), "dev".toCharArray());
             try {
                 accounts.insert("dev", hash, "active");

@@ -14,11 +14,6 @@ import java.util.List;
 @Slf4j
 public final class ForyDecoder extends MessageToMessageDecoder<GatewayFrame> {
 
-    private static final ThreadSafeFory FORY = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .requireClassRegistration(false)
-        .buildThreadSafeFory();
-
     @Override
     protected void decode(ChannelHandlerContext ctx, GatewayFrame msg, List<Object> out) throws Exception {
         byte[] payloadBytes = msg.payload();
@@ -28,7 +23,7 @@ public final class ForyDecoder extends MessageToMessageDecoder<GatewayFrame> {
         }
 
         // Deserialize the payload using Apache Fory
-        Object domainObject = FORY.deserialize(payloadBytes);
+        Object domainObject = ForySerializer.deserialize(payloadBytes);
 
         log.debug("Decoded message: flag={} type={}", msg.flag(), domainObject.getClass().getSimpleName());
 

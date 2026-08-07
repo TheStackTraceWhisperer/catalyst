@@ -22,11 +22,10 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 
-/** Internal QUIC client used by the gateway to forward GatewayFrame requests to backends. */
+/** Internal QUIC client used by the gateway to forward GatewayFrame requests asynchronously to backends. */
 @Slf4j
 public final class QuicGatewayClient implements AutoCloseable {
     public static final String PROTOCOL = "catalyst-1";
@@ -45,18 +44,29 @@ public final class QuicGatewayClient implements AutoCloseable {
         this.port = port;
     }
 
-    /** Sends a GatewayFrame request and awaits a GatewayFrame response from the backend. */
-    public GatewayFrame request(GatewayFrame frame) throws IOException {
-        try {
-            ensureConnected();
-            return sendOnStream(frame);
-        } catch (IOException e) {
-            closeConnection();
-            throw e;
-        } catch (Exception e) {
-            closeConnection();
-            throw new IOException("QUIC backend request failed: " + e.getMessage(), e);
-        }
+    /** Sends a GatewayFrame request asynchronously and returns a CompletableFuture containing the response. */
+    public CompletableFuture<GatewayFrame> requestAsync(GatewayFrame frame) {
+        CompletableFuture<GatewayFrame> future = new CompletableFuture<>();
+        
+        // Use a virtual thread to handle connection handshakes to avoid blocking Netty EventLoop
+        Thread.ofVirtual().start(() -> {
+            try {
+                ensureConnected();
+                sendOnStreamAsync(frame, future);
+            } catch (Exception e) {
+                closeConnection();
+                future.completeExceptionally(new IOException("QUIC backend request failed: " + e.getMessage(), e));
+            }
+        });
+
+        // Apply a timeout to the future
+        future.orTimeout(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS)
+            .exceptionally(ex -> {
+                log.warn("Request timed out to backend {}:{}", host, port);
+                return null;
+            });
+
+        return future;
     }
 
     @Override
@@ -114,10 +124,8 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    private GatewayFrame sendOnStream(GatewayFrame outbound) throws Exception {
-        CompletableFuture<GatewayFrame> future = new CompletableFuture<>();
-
-        QuicStreamChannel stream = quicChannel.createStream(
+    private void sendOnStreamAsync(GatewayFrame outbound, CompletableFuture<GatewayFrame> future) {
+        quicChannel.createStream(
                 QuicStreamType.BIDIRECTIONAL,
                 new ChannelInitializer<QuicStreamChannel>() {
                     @Override
@@ -128,24 +136,21 @@ public final class QuicGatewayClient implements AutoCloseable {
                             .addLast(new ResponseStreamHandler(future));
                     }
                 })
-            .sync()
-            .getNow();
-
-        stream.writeAndFlush(outbound).addListener(f -> {
-            if (!f.isSuccess()) {
-                future.completeExceptionally(f.cause());
-                stream.close();
-                return;
-            }
-            stream.shutdownOutput();
-        });
-
-        try {
-            return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
-        } catch (TimeoutException e) {
-            stream.close();
-            throw new IOException("Request timed out to backend " + host + ":" + port);
-        }
+            .addListener(f -> {
+                if (!f.isSuccess()) {
+                    future.completeExceptionally(f.cause());
+                    return;
+                }
+                QuicStreamChannel stream = (QuicStreamChannel) f.getNow();
+                stream.writeAndFlush(outbound).addListener(writeFuture -> {
+                    if (!writeFuture.isSuccess()) {
+                        future.completeExceptionally(writeFuture.cause());
+                        stream.close();
+                        return;
+                    }
+                    stream.shutdownOutput();
+                });
+            });
     }
 
     private void closeConnection() {

@@ -49,21 +49,31 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        try {
-            GatewayFrame responseFrame = client.request(requestFrame);
-            handleStateTransitions(parentChannel, responseFrame);
-            
-            ctx.writeAndFlush(responseFrame).addListener(f -> {
-                if (!f.isSuccess()) {
-                    log.warn("Failed to write gateway response", f.cause());
+        // Forward request asynchronously to backend client (Zero Blocking on EventLoop)
+        client.requestAsync(requestFrame)
+            .thenAccept(responseFrame -> {
+                if (responseFrame == null) {
+                    sendBackendUnavailable(ctx);
+                    return;
                 }
-                ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                handleStateTransitions(parentChannel, responseFrame);
+                ctx.writeAndFlush(responseFrame).addListener(f -> {
+                    if (!f.isSuccess()) {
+                        log.warn("Failed to write gateway response", f.cause());
+                    }
+                    ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                });
+            })
+            .exceptionally(throwable -> {
+                log.error("Failed to forward request asynchronously to backend", throwable);
+                sendBackendUnavailable(ctx);
+                return null;
             });
-        } catch (Exception e) {
-            log.error("Failed to forward request to backend", e);
-            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "error=backend_unavailable", new byte[0]))
-                .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
-        }
+    }
+
+    private void sendBackendUnavailable(ChannelHandlerContext ctx) {
+        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "error=backend_unavailable", new byte[0]))
+            .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 
     private QuicGatewayClient resolveTargetClient(Channel parentChannel, ConnectionState state, GatewayFrame requestFrame) {

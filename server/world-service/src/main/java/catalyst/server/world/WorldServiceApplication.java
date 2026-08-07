@@ -41,15 +41,18 @@ public class WorldServiceApplication {
         dispatcher.register(LogoutRequest.class, worldHandler::handleLogout);
 
         transport.setDispatcher(dispatcher::dispatch);
-        Thread.ofVirtual().start(() -> {
-            try {
-                transport.start();
-                log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
-                transport.awaitShutdown();
-            } catch (Exception e) {
-                log.error("Failed to start World transport", e);
-            }
-        });
+        try {
+            transport.start();
+            log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
+        } catch (Exception e) {
+            log.error("Failed to start World transport", e);
+        }
+    }
+
+    @jakarta.annotation.PreDestroy
+    public void onShutdown() {
+        log.info("Stopping World Service transport...");
+        transport.stop();
     }
 
     private void schedulePeriodicPruning() {

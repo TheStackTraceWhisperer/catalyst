@@ -15,14 +15,9 @@ import java.util.List;
 @Slf4j
 public final class ForyEncoder extends MessageToMessageEncoder<Object> {
 
-    private static final ThreadSafeFory FORY = Fory.builder()
-        .withLanguage(Language.JAVA)
-        .requireClassRegistration(false)
-        .buildThreadSafeFory();
-
     @Override
     protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
-        byte[] payloadBytes = FORY.serialize(msg);
+        byte[] payloadBytes = ForySerializer.serialize(msg);
         
         byte flag = determineFlag(msg);
         String metadata = determineMetadata(msg);

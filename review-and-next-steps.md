@@ -31,17 +31,19 @@ stateDiagram-v2
     M2 : Milestone 2 (Closed)
     M3 : Milestone 3 (Closed)
     M5 : Milestone 5 (Closed)
+    M6 : Milestone 6 (Closed)
     
     [*] --> M1
     M1 --> M2
     M2 --> M3
     M3 --> M4
     M4 --> M5
+    M5 --> M6
 ```
 
 ### Milestone 1: Connection, Authentication, and Session Kernel
 > [!NOTE]
-> **Status:** CLOSED (2026-08-03)
+> **Status:** CLOSED
 
 *   **Capabilities Delivered:** 
     *   End-to-end client-server slice over QUIC/TLS 1.3 protocol `catalyst-1`.
@@ -52,7 +54,7 @@ stateDiagram-v2
 
 ### Milestone 2: Kernel Architecture
 > [!NOTE]
-> **Status:** CLOSED (2026-08-04)
+> **Status:** CLOSED
 
 *   **Capabilities Delivered:**
     *   Extracted the shared `engine` kernel module.
@@ -60,11 +62,11 @@ stateDiagram-v2
     *   Transitioned the client to a stack-based **Application State Machine** (`ApplicationStateService`) to phase-lock boundaries.
     *   Decoupled server handlers (`LoginHandler`, `LobbyHandler`, `WorldHandler`) from core database access repositories.
     *   Upgraded rendering ceiling to **OpenGL 4.6 core profile context** inside `WindowService`.
-    *   Added **Lombok annotations** (`@RequiredArgsConstructor`, `@Slf4j`, `@Value`, `@Builder`) and implemented `WireCodec v2` containing typed builder/accessor APIs.
+    *   Added **Lombok annotations** and implemented `WireCodec v2` containing typed builder/accessor APIs.
 
 ### Milestone 3: Kernel Concurrency and Typed Contracts
 > [!NOTE]
-> **Status:** CLOSED (2026-08-05)
+> **Status:** CLOSED
 
 *   **Capabilities Delivered:**
     *   **Virtual-Thread Task Scheduler:** Created a shared `TaskSchedulerService` inside `common` executing tasks on `Executors.newVirtualThreadPerTaskExecutor()`.
@@ -73,7 +75,7 @@ stateDiagram-v2
 
 ### Milestone 4: Structural Cleanups and Conventions
 > [!NOTE]
-> **Status:** CLOSED (2026-08-05)
+> **Status:** CLOSED
 
 *   **Capabilities Delivered:**
     *   Restructured Maven modules hierarchically into `{client, common, server}` directories containing submodules (`engine`, `application`, `network`, `concurrency`, `dto`).
@@ -83,12 +85,22 @@ stateDiagram-v2
 
 ### Milestone 5: Automated E2E and CI Gating
 > [!NOTE]
-> **Status:** CLOSED (2026-08-05)
+> **Status:** CLOSED
 
 *   **Capabilities Delivered:**
     *   **Modular E2E Test Suite:** Extracted E2E Validation Harness into a standalone root-level `tests` module (`catalyst-tests`) targeting only a lightweight `catalyst-client-network` runtime library.
     *   **E2E Validation script:** Stabilized the happy-path integration test (`scripts/run-e2e.sh`) booting a Postgres container, compiling the project, starting the server, executing assertions, and tearing down dependencies cleanly.
     *   **CI Integration:** Designed and implemented a GitHub Actions workflow (`.github/workflows/e2e-ci.yml`) that triggers automatically on commits and pull requests, running the E2E verification test and archiving diagnostic logs on run failures.
+
+### Milestone 6: Stateful Gateway and Fory Serialization Protocol
+> [!NOTE]
+> **Status:** CLOSED (2026-08-07)
+
+*   **Capabilities Delivered:**
+    *   **Apache Fory Integration:** Replaced the untyped, text-based delimited `MessageFrame` protocol with a high-performance binary protocol using Apache Fory (Fury).
+    *   **Stateful Connection Routing:** Upgraded the Gateway Server to route packets dynamically based on the parent QUIC channel's authentication state (`UNAUTHENTICATED`, `AUTHENTICATED`, `PLAYING`).
+    *   **DTO-Agnostic Proxy:** Removed all DTO classes and reflection from the Gateway, relying on a lightweight `GatewayFrame` envelope to route packets natively and securely.
+    *   **Gateway Performance Optimization:** Removed `RawFrameCaptureHandler` and the nested array copying buffer hacks, leveraging Netty's native pipeline.
 
 ---
 
@@ -153,7 +165,7 @@ sequenceDiagram
     deactivate Scheduler
     
     activate VirtThread
-    Note over VirtThread: Running DB query / Network I/O / DAT parsing
+    Note over VirtThread: Running DB query / Network I/O
     VirtThread->>Scheduler: runOnMainThread(Runnable callback)
     Note over Scheduler: Add to ConcurrentLinkedQueue
     deactivate VirtThread
@@ -169,24 +181,10 @@ sequenceDiagram
 
 ---
 
-## 5. Potential Next Steps & Roadmap
+## 5. Strategic Next Steps
 
-```mermaid
-gantt
-    title Catalyst-Java Next Steps Timeline
-    dateFormat  YYYY-MM-DD
-    section Future Work (Milestone 6)
-    Binary Protocol (Fory)     :active, m6_1, 2026-08-05, 5d
-    DAT parsing & Preloading   : m6_2, 2026-08-05, 10d
-    Zone Entity Simulation     : m6_3, after m6_1, 12d
-    Movement & Collision       : m6_4, after m6_2, 14d
-```
+Rather than prioritizing DAT map parsing or client movement engines at this stage, the next logical architectural steps focus on maturing the core service interfaces and concurrency dispatchers:
 
-### 1. Transition to Apache Fory Binary Serialization
-Implement the binary protocol migration. This replaces the temporary text-based delimited `MessageFrame` protocol with a high-performance binary protocol using Apache Fory.
-
-### 2. Integrate DAT Parser & Table Preloading
-Read binary files and DAT maps based on the Kotlin/JS reference client `xim-source`. Establish the table preloading process to query spells, jobs, abilities, and zone settings before loading game instances.
-
-### 3. Implement Zone Entities & Movement Engine
-Establish spatial coordinate tracking (`x, y, z, rot`) on client and server. Build a movement interpolation loop, basic zone collisions (terrain meshes), and sync surrounding NPC / PC entity updates.
+1. **Phase 2.5 Concurrency Dispatchers:** Offload blocking database requests and gameplay tasks from Netty event loop threads onto Virtual Threads (`StatelessMessageDispatcher`) and sequential tick loops (`ZoneMessageDispatcher`).
+2. **Modular Client Task Handling:** Implement the `ClientDispatcher` integration to route inbound packets back to the main GLFW/ImGui render loop thread.
+3. **Lobby & Login Strategy Refactoring:** Split monolithic handlers into individual `PacketHandler<T>` strategy beans.

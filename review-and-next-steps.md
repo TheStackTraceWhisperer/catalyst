@@ -50,7 +50,7 @@ stateDiagram-v2
     *   Argon2id account authentication and unique session registration.
     *   Character CRUD validation rules matching retail ranges (race, body size, starting nation, starter jobs).
     *   Session heartbeats (keepalives via `PING`/`PONG` and 30-second server timeout monitoring).
-    *   Phase-locked LWJGL + Dear ImGui client shell with a local-only dev bootstrap.
+    *   Phase-locked LWJGL + Dear ImGui client shell.
 
 ### Milestone 2: Kernel Architecture
 > [!NOTE]
@@ -146,8 +146,6 @@ stateDiagram-v2
     Authenticated --> CharacterSelected : CHAR_SELECT character
     CharacterSelected --> InGame : PLAY (session created, join zone)
     InGame --> Unauthenticated : LOGOUT / Session Timeout / Disconnect
-    Unauthenticated --> LocalZone : Local-Only Mode
-    LocalZone --> Unauthenticated : Exit Local-Only
 ```
 
 ### Concurrency & Dispatch Model

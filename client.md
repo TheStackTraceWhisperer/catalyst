@@ -24,4 +24,3 @@ The client architecture is split into two modules:
 - **Lobby UI Development:** Implement ImGui panels for character listing, creation (validating race/face/nation choices), and character selection.
 - **Connection Migration & Handshake Resiliency:** Handle QUIC connection drop-outs, network switching events, and auto-reauthentication gracefully in the client state machine.
 - **Background Asset Preloading:** Use virtual threads (`TaskSchedulerService`) to load 2D UI textures and sprites asynchronously, piping the raw image bytes to the foreground queue for OpenGL texture registration.
-- **Local-Only Offline Mode:** Expand the offline dev mode (`LocalZone`) to support sandbox zone debugging without needing a gateway connection.

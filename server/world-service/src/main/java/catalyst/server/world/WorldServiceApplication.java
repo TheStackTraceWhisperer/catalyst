@@ -1,8 +1,10 @@
 package catalyst.server.world;
 
 import catalyst.common.concurrency.TaskScheduler;
+import catalyst.common.network.ObjectDispatcher;
+import catalyst.common.dto.*;
 import catalyst.server.world.properties.ServerProperties;
-import catalyst.server.world.dispatch.MessageDispatcher;
+import catalyst.server.world.handler.WorldHandler;
 import catalyst.server.world.repository.SessionRepository;
 import catalyst.server.world.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;
@@ -20,7 +22,7 @@ import java.sql.SQLException;
 public class WorldServiceApplication {
 
     private final QuicServerTransport transport;
-    private final MessageDispatcher dispatcher;
+    private final WorldHandler worldHandler;
     private final SessionRepository sessions;
     private final ServerProperties props;
     private final TaskScheduler scheduler;
@@ -32,6 +34,11 @@ public class WorldServiceApplication {
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
         schedulePeriodicPruning();
+
+        ObjectDispatcher dispatcher = new ObjectDispatcher();
+        dispatcher.register(PlayRequest.class, worldHandler::handlePlay);
+        dispatcher.register(PingRequest.class, worldHandler::handlePing);
+        dispatcher.register(LogoutRequest.class, worldHandler::handleLogout);
 
         transport.setDispatcher(dispatcher::dispatch);
         Thread.ofVirtual().start(() -> {

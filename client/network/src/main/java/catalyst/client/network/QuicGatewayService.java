@@ -1,8 +1,7 @@
 package catalyst.client.network;
 
-import catalyst.common.network.MessageFrame;
-import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.*;
+import catalyst.common.network.ResponseCode;
 import jakarta.inject.Singleton;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -40,15 +39,11 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     public LoginResponse login(String host, int port, String username, String password) throws IOException {
-        MessageFrame reqFrame = ProtocolMapper.fromLoginRequest(new LoginRequest(username, password));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toLoginResponse(respFrame);
+        return request(host, port, new LoginRequest(username, password), LoginResponse.class);
     }
 
     public CharListResponse listCharacters(String host, int port, String authToken) throws IOException {
-        MessageFrame reqFrame = ProtocolMapper.fromCharListRequest(new CharListRequest(authToken));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toCharListResponse(respFrame);
+        return request(host, port, new CharListRequest(authToken), CharListResponse.class);
     }
 
     public List<CharacterSummary> listCharacterSummaries(String host, int port, String authToken) throws IOException {
@@ -73,10 +68,9 @@ public class QuicGatewayService implements AutoCloseable {
 
     public CharCreateResponse createCharacter(String host, int port, String authToken,
                                          String name, int race, int size, int face, int mainJob, String nation) throws IOException {
-        MessageFrame reqFrame = ProtocolMapper.fromCharCreateRequest(
-            new CharCreateRequest(authToken, name, race, size, face, mainJob, nation));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toCharCreateResponse(respFrame);
+        return request(host, port,
+            new CharCreateRequest(authToken, name, race, size, face, mainJob, nation),
+            CharCreateResponse.class);
     }
 
     public CharSelectResponse selectCharacter(String host, int port, String authToken, String characterId) throws IOException {
@@ -86,9 +80,7 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        MessageFrame reqFrame = ProtocolMapper.fromCharSelectRequest(new CharSelectRequest(authToken, charId));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toCharSelectResponse(respFrame);
+        return request(host, port, new CharSelectRequest(authToken, charId), CharSelectResponse.class);
     }
 
     public CharDeleteResponse deleteCharacter(String host, int port, String authToken, String characterId) throws IOException {
@@ -98,9 +90,7 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        MessageFrame reqFrame = ProtocolMapper.fromCharDeleteRequest(new CharDeleteRequest(authToken, charId));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toCharDeleteResponse(respFrame);
+        return request(host, port, new CharDeleteRequest(authToken, charId), CharDeleteResponse.class);
     }
 
     public PlayResponse play(String host, int port, String authToken, String characterId) throws IOException {
@@ -110,21 +100,19 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        MessageFrame reqFrame = ProtocolMapper.fromPlayRequest(new PlayRequest(authToken, charId));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toPlayResponse(respFrame);
+        return request(host, port, new PlayRequest(authToken, charId), PlayResponse.class);
     }
 
     public PingResponse ping(String host, int port, String sessionId) throws IOException {
-        MessageFrame reqFrame = ProtocolMapper.fromPingRequest(new PingRequest(sessionId));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toPingResponse(respFrame);
+        return request(host, port, new PingRequest(sessionId), PingResponse.class);
     }
 
     public LogoutResponse logout(String host, int port, String sessionId) throws IOException {
-        MessageFrame reqFrame = ProtocolMapper.fromLogoutRequest(new LogoutRequest(sessionId));
-        MessageFrame respFrame = gateway.request(host, port, reqFrame);
-        return ProtocolMapper.toLogoutResponse(respFrame);
+        return request(host, port, new LogoutRequest(sessionId), LogoutResponse.class);
+    }
+
+    private <T> T request(String host, int port, Object dto, Class<T> responseType) throws IOException {
+        return gateway.request(host, port, dto, responseType);
     }
 
     @Override

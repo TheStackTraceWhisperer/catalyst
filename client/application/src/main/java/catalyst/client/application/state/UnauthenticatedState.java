@@ -6,7 +6,6 @@ import catalyst.client.application.ui.DebugLogPanel;
 import catalyst.client.application.ui.LoginPanel;
 import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.LoginResponse;
-import catalyst.common.dto.ProtocolMapper;
 import catalyst.client.engine.services.imgui.ImGuiService;
 import catalyst.client.engine.services.state.ApplicationState;
 import catalyst.client.engine.services.state.ApplicationStateService;

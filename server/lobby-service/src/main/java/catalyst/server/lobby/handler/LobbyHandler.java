@@ -1,8 +1,7 @@
 package catalyst.server.lobby.handler;
 
-import catalyst.common.network.MessageFrame;
-import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.*;
+import catalyst.common.network.ResponseCode;
 import catalyst.server.lobby.repository.CharacterRepository;
 import catalyst.server.lobby.repository.SessionRepository;
 import catalyst.server.common.repository.AuthTicketStore;
@@ -16,6 +15,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.function.Function;
 import java.util.regex.Pattern;
 
 @Slf4j
@@ -48,16 +48,9 @@ public class LobbyHandler {
     private final ServerProperties props;
     private final Random rng = new Random();
 
-    public MessageFrame handleList(MessageFrame reqFrame) {
-        CharListRequest req;
-        try {
-            req = ProtocolMapper.toCharListRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            return unauthorized();
-        }
-
+    public CharListResponse handleList(CharListRequest req) {
         Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) return unauthorized();
+        if (accountId == null) return unauthorized(code -> new CharListResponse(code, new ArrayList<>()));
         try {
             List<CharacterRepository.CharacterListRow> rows = characters.findActiveByAccount(accountId);
             List<CharListResponse.CharacterDto> characterDtos = new ArrayList<>(rows.size());
@@ -75,27 +68,17 @@ public class LobbyHandler {
                     r.currentZoneId()
                 ));
             }
-            CharListResponse resp = new CharListResponse(ResponseCode.OK, characterDtos);
             log.info("CHAR_LIST_OK account={} count={}", accountId, rows.size());
-            return ProtocolMapper.fromCharListResponse(resp);
+            return new CharListResponse(ResponseCode.OK, characterDtos);
         } catch (SQLException e) {
             log.error("CHAR_LIST_ERR account={}", accountId, e);
-            CharListResponse resp = new CharListResponse(ResponseCode.ERROR, new ArrayList<>());
-            return ProtocolMapper.fromCharListResponse(resp);
+            return new CharListResponse(ResponseCode.ERROR, new ArrayList<>());
         }
     }
 
-    public MessageFrame handleCreate(MessageFrame reqFrame) {
-        CharCreateRequest req;
-        try {
-            req = ProtocolMapper.toCharCreateRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, e.getMessage(), -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
-        }
-
+    public CharCreateResponse handleCreate(CharCreateRequest req) {
         Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) return unauthorized();
+        if (accountId == null) return unauthorized(code -> new CharCreateResponse(code, "Invalid or expired auth token", -1, null));
 
         String name    = normalize(req.name());
         int    race    = req.race();
@@ -109,26 +92,21 @@ public class LobbyHandler {
         } catch (NumberFormatException ignored) {}
 
         if (!NAME_PATTERN.matcher(name).matches()) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, "Character name must be 3-15 letters (A-Z)", -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.CONFLICT, "Character name must be 3-15 letters (A-Z)", -1, null);
         }
         RaceRule rule = RACE_RULES.get(race);
         if (rule == null) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, "Race must be 1-8", -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.CONFLICT, "Race must be 1-8", -1, null);
         }
         if (size < rule.minSize() || size > rule.maxSize()) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT,
+            return new CharCreateResponse(ResponseCode.CONFLICT,
                 "Size for " + rule.name() + " must be " + rule.minSize() + ".." + rule.maxSize(), -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
         }
         if (face < 0 || face > 15) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, "Face must be 0-15", -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.CONFLICT, "Face must be 0-15", -1, null);
         }
         if (nation < 0 || nation > 2) {
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, "Nation must be 0-2", -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.CONFLICT, "Nation must be 0-2", -1, null);
         }
 
         ZoneSpawn spawn = NATION_ZONES.get(nation).get(rng.nextInt(3));
@@ -138,121 +116,81 @@ public class LobbyHandler {
                 spawn.zoneId(), spawn.x(), spawn.y(), spawn.z(), spawn.rot());
             log.info("CHAR_CREATE_OK account={} characterId={} name={} race={} job={} nation={}",
                 accountId, charId, name, race, mainJob, nation);
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.OK, null, charId, name);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.OK, null, charId, name);
         } catch (SQLException e) {
             if ("23505".equals(e.getSQLState())) {
                 log.info("CHAR_CREATE_ERR account={} reason=duplicate_name name={}", accountId, name);
-                CharCreateResponse resp = new CharCreateResponse(ResponseCode.CONFLICT, "Character name is already in use", -1, null);
-                return ProtocolMapper.fromCharCreateResponse(resp);
+                return new CharCreateResponse(ResponseCode.CONFLICT, "Character name is already in use", -1, null);
             }
             log.error("CHAR_CREATE_ERR account={}", accountId, e);
-            CharCreateResponse resp = new CharCreateResponse(ResponseCode.ERROR, "Failed to create character", -1, null);
-            return ProtocolMapper.fromCharCreateResponse(resp);
+            return new CharCreateResponse(ResponseCode.ERROR, "Failed to create character", -1, null);
         }
     }
 
-    public MessageFrame handleSelect(MessageFrame reqFrame) {
-        CharSelectRequest req;
-        try {
-            req = ProtocolMapper.toCharSelectRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            CharSelectResponse resp = new CharSelectResponse(ResponseCode.CONFLICT, e.getMessage(), -1, null, 0, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromCharSelectResponse(resp);
-        }
-
+    public CharSelectResponse handleSelect(CharSelectRequest req) {
         Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) return unauthorized();
+        if (accountId == null) return unauthorized(code -> new CharSelectResponse(code, "Invalid or expired auth token", -1, null, 0, 0, 0f, 0f, 0f, 0f));
         long charId = req.characterId();
         if (charId <= 0) {
-            CharSelectResponse resp = new CharSelectResponse(ResponseCode.CONFLICT, "characterId required", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromCharSelectResponse(resp);
+            return new CharSelectResponse(ResponseCode.CONFLICT, "characterId required", -1, null, 0, 0, 0f, 0f, 0f, 0f);
         }
         try {
             if (sessions.hasActiveSession(accountId)) {
-                CharSelectResponse resp = new CharSelectResponse(ResponseCode.CONFLICT, "Account is already online", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-                return ProtocolMapper.fromCharSelectResponse(resp);
+                return new CharSelectResponse(ResponseCode.CONFLICT, "Account is already online", -1, null, 0, 0, 0f, 0f, 0f, 0f);
             }
             var identity = characters.findActiveByIdAndAccount(charId, accountId);
             if (identity.isEmpty()) {
-                CharSelectResponse resp = new CharSelectResponse(ResponseCode.NOT_FOUND, "Character not found", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-                return ProtocolMapper.fromCharSelectResponse(resp);
+                return new CharSelectResponse(ResponseCode.NOT_FOUND, "Character not found", -1, null, 0, 0, 0f, 0f, 0f, 0f);
             }
             var id = identity.get();
             log.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, charId, id.currentZoneId());
 
-            CharSelectResponse resp = new CharSelectResponse(
+            return new CharSelectResponse(
                 ResponseCode.OK, null, charId, id.name(),
                 id.homeZoneId(), id.currentZoneId(),
                 id.currentX(), id.currentY(), id.currentZ(), id.currentHeading()
             );
-            return ProtocolMapper.fromCharSelectResponse(resp);
         } catch (SQLException e) {
             log.error("CHAR_SELECT_ERR account={} charId={}", accountId, charId, e);
-            CharSelectResponse resp = new CharSelectResponse(ResponseCode.ERROR, "Failed to load character", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromCharSelectResponse(resp);
+            return new CharSelectResponse(ResponseCode.ERROR, "Failed to load character", -1, null, 0, 0, 0f, 0f, 0f, 0f);
         }
     }
 
-    public MessageFrame handleDelete(MessageFrame reqFrame) {
-        CharDeleteRequest req;
-        try {
-            req = ProtocolMapper.toCharDeleteRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.CONFLICT, e.getMessage(), -1);
-            return ProtocolMapper.fromCharDeleteResponse(resp);
-        }
-
+    public CharDeleteResponse handleDelete(CharDeleteRequest req) {
         Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) return unauthorized();
+        if (accountId == null) return unauthorized(code -> new CharDeleteResponse(code, "Invalid or expired auth token", -1));
         long charId = req.characterId();
         if (charId <= 0) {
-            CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.CONFLICT, "characterId required", -1);
-            return ProtocolMapper.fromCharDeleteResponse(resp);
+            return new CharDeleteResponse(ResponseCode.CONFLICT, "characterId required", -1);
         }
         try {
             if (sessions.characterHasActiveSession(charId)) {
-                CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.CONFLICT, "Character is currently online", charId);
-                return ProtocolMapper.fromCharDeleteResponse(resp);
+                return new CharDeleteResponse(ResponseCode.CONFLICT, "Character is currently online", charId);
             }
             if (!characters.softDelete(charId, accountId)) {
-                CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.NOT_FOUND, "Character not found", charId);
-                return ProtocolMapper.fromCharDeleteResponse(resp);
+                return new CharDeleteResponse(ResponseCode.NOT_FOUND, "Character not found", charId);
             }
             log.info("CHAR_DELETE_OK account={} characterId={}", accountId, charId);
-            CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.OK, null, charId);
-            return ProtocolMapper.fromCharDeleteResponse(resp);
+            return new CharDeleteResponse(ResponseCode.OK, null, charId);
         } catch (SQLException e) {
             log.error("CHAR_DELETE_ERR account={} charId={}", accountId, charId, e);
-            CharDeleteResponse resp = new CharDeleteResponse(ResponseCode.ERROR, "Failed to delete character", charId);
-            return ProtocolMapper.fromCharDeleteResponse(resp);
+            return new CharDeleteResponse(ResponseCode.ERROR, "Failed to delete character", charId);
         }
     }
 
-    public MessageFrame handlePlay(MessageFrame reqFrame) {
-        PlayRequest req;
-        try {
-            req = ProtocolMapper.toPlayRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            PlayResponse resp = new PlayResponse(ResponseCode.CONFLICT, e.getMessage(), null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromPlayResponse(resp);
-        }
-
+    public PlayResponse handlePlay(PlayRequest req) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
-            PlayResponse resp = new PlayResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromPlayResponse(resp);
+            return unauthorized(code -> new PlayResponse(code, "Invalid or expired auth token", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f));
         }
         long charId = req.characterId();
         if (charId <= 0) {
-            PlayResponse resp = new PlayResponse(ResponseCode.CONFLICT, "characterId required", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromPlayResponse(resp);
+            return new PlayResponse(ResponseCode.CONFLICT, "characterId required", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
         }
         try {
             var identity = characters.findActiveByIdAndAccount(charId, accountId);
             if (identity.isEmpty()) {
-                PlayResponse resp = new PlayResponse(ResponseCode.NOT_FOUND, "Character not found", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-                return ProtocolMapper.fromPlayResponse(resp);
+                return new PlayResponse(ResponseCode.NOT_FOUND, "Character not found", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
             }
             var id = identity.get();
             String sessionId;
@@ -261,15 +199,14 @@ public class LobbyHandler {
             } catch (SQLException e) {
                 if ("23505".equals(e.getSQLState())) {
                     log.info("PLAY_ERR account={} charId={} reason=already_online", accountId, charId);
-                    PlayResponse resp = new PlayResponse(ResponseCode.CONFLICT, "Account or character is already online", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-                    return ProtocolMapper.fromPlayResponse(resp);
+                    return new PlayResponse(ResponseCode.CONFLICT, "Account or character is already online", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
                 }
                 throw e;
             }
             int pop = sessions.getZonePopulation(id.currentZoneId());
             log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, sessionId, id.currentZoneId(), pop);
 
-            PlayResponse resp = new PlayResponse(
+            return new PlayResponse(
                 ResponseCode.OK, null, sessionId,
                 accountId, charId, id.name(),
                 id.currentZoneId(), pop,
@@ -277,18 +214,15 @@ public class LobbyHandler {
                 id.homeZoneId(),
                 id.currentX(), id.currentY(), id.currentZ(), id.currentHeading()
             );
-            return ProtocolMapper.fromPlayResponse(resp);
         } catch (SQLException e) {
             log.error("PLAY_ERR account={} charId={}", accountId, charId, e);
-            PlayResponse resp = new PlayResponse(ResponseCode.ERROR, "Failed to enter world", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-            return ProtocolMapper.fromPlayResponse(resp);
+            return new PlayResponse(ResponseCode.ERROR, "Failed to enter world", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
         }
     }
 
     private String normalize(String v) { return v == null ? "" : v.trim(); }
-    private MessageFrame unauthorized() { return error("UNAUTHORIZED", "Invalid or expired auth token"); }
-    private MessageFrame error(String code, String message) {
-        return MessageFrame.builder("ERROR").put("code", code).put("message", message).build();
+    private <T> T unauthorized(Function<ResponseCode, T> responseFactory) {
+        return responseFactory.apply(ResponseCode.UNAUTHORIZED);
     }
 
     private record RaceRule(String name, int minSize, int maxSize) {}

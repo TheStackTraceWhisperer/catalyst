@@ -1,11 +1,8 @@
 package catalyst.server.lobby.transport;
 
-import catalyst.common.network.MessageFrame;
-import catalyst.common.network.WireCodec;
 import catalyst.server.lobby.properties.ServerProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -21,13 +18,14 @@ import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
-import io.netty.util.concurrent.Future;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import catalyst.common.network.ForyDecoder;
+import catalyst.common.network.ForyEncoder;
 
 @Slf4j
 @Singleton
@@ -36,12 +34,14 @@ public final class QuicServerTransport {
     static final String PROTOCOL = "catalyst-1";
 
     private final ServerProperties props;
-    private Function<MessageFrame, MessageFrame> dispatcher = req ->
-        MessageFrame.builder("ERROR").put("code","NOT_READY").put("message","Dispatcher not set").build();
+    private Function<Object, Object> dispatcher = req -> {
+        log.error("Dispatcher not set for request: {}", req.getClass().getSimpleName());
+        return null;
+    };
     private EventLoopGroup group;
     private Channel bindChannel;
 
-    public void setDispatcher(Function<MessageFrame, MessageFrame> dispatcher) {
+    public void setDispatcher(Function<Object, Object> dispatcher) {
         this.dispatcher = dispatcher;
     }
 
@@ -69,7 +69,10 @@ public final class QuicServerTransport {
             .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
                 @Override
                 protected void initChannel(QuicStreamChannel ch) {
-                    ch.pipeline().addLast(new RequestHandler(dispatcher));
+                    ch.pipeline()
+                        .addLast(new ForyDecoder())
+                        .addLast(new ForyEncoder())
+                        .addLast(new RequestHandler(dispatcher));
                 }
             })
             .build();
@@ -102,46 +105,32 @@ public final class QuicServerTransport {
     }
 
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
-        private final Function<MessageFrame, MessageFrame> dispatcher;
-        /** Byte accumulation buffer for framed binary messages. */
-        private byte[] frameBuffer = new byte[0];
+        private final Function<Object, Object> dispatcher;
 
-        RequestHandler(Function<MessageFrame, MessageFrame> dispatcher) {
+        RequestHandler(Function<Object, Object> dispatcher) {
             this.dispatcher = dispatcher;
         }
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf buf = (ByteBuf) msg;
             try {
-                int readable = buf.readableBytes();
-                byte[] chunk = new byte[readable];
-                buf.readBytes(chunk);
-                frameBuffer = concat(frameBuffer, chunk);
-
-                while (true) {
-                    if (frameBuffer.length < WireCodec.PAYLOAD_OFFSET) break;
-                    int totalLen = WireCodec.framedLength(frameBuffer);
-                    if (frameBuffer.length < totalLen) break;
-
-                    byte[] frame = new byte[totalLen];
-                    System.arraycopy(frameBuffer, 0, frame, 0, totalLen);
-
-                    int remaining = frameBuffer.length - totalLen;
-                    byte[] newBuf = new byte[remaining];
-                    System.arraycopy(frameBuffer, totalLen, newBuf, 0, remaining);
-                    frameBuffer = newBuf;
-
-                    MessageFrame request = WireCodec.decode(frame);
-                    MessageFrame response = dispatcher.apply(request);
-                    byte[] encoded = WireCodec.encode(response);
-                    ByteBuf out = Unpooled.wrappedBuffer(encoded);
-                    ctx.writeAndFlush(out).addListener((Future<Void> f) -> {
+                // msg is already a decoded domain object (e.g., LoginRequest)
+                log.debug("Received request: {}", msg.getClass().getSimpleName());
+                
+                Object response = dispatcher.apply(msg);
+                
+                if (response != null) {
+                    // Response will be encoded by ForyEncoder
+                    ctx.writeAndFlush(response).addListener(f -> {
                         ((QuicStreamChannel) ctx.channel()).shutdownOutput();
                     });
+                } else {
+                    log.warn("Dispatcher returned null for request: {}", msg.getClass().getSimpleName());
+                    ctx.close();
                 }
-            } finally {
-                buf.release();
+            } catch (Exception e) {
+                log.error("Error processing request: {}", msg.getClass().getSimpleName(), e);
+                ctx.close();
             }
         }
 
@@ -149,13 +138,6 @@ public final class QuicServerTransport {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             log.warn("QUIC stream error", cause);
             ctx.close();
-        }
-
-        private static byte[] concat(byte[] a, byte[] b) {
-            byte[] result = new byte[a.length + b.length];
-            System.arraycopy(a, 0, result, 0, a.length);
-            System.arraycopy(b, 0, result, a.length, b.length);
-            return result;
         }
     }
 }

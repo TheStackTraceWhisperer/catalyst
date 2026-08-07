@@ -1,9 +1,8 @@
 package catalyst.gateway.proxy;
 
-import catalyst.common.network.MessageFrame;
-import catalyst.common.network.WireCodec;
+import catalyst.common.network.ForyDecoder;
+import catalyst.common.network.ForyEncoder;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -27,18 +26,10 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 
-/**
- * Internal QUIC client used by the gateway to forward requests to backend services.
- *
- * <p>Supports two request modes:
- * <ul>
- *   <li>{@link #request(byte[])} – forward a raw wire buffer verbatim (zero-copy routing)</li>
- *   <li>{@link #request(MessageFrame)} – encode a frame and forward it</li>
- * </ul>
- */
+/** Internal QUIC client used by the gateway to forward Fory-encoded requests to backends. */
 @Slf4j
 public final class QuicGatewayClient implements AutoCloseable {
-    static final String PROTOCOL = "catalyst-1";
+    public static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 
     private final String host;
@@ -54,18 +45,11 @@ public final class QuicGatewayClient implements AutoCloseable {
         this.port = port;
     }
 
-    /**
-     * Forwards a pre-encoded (raw binary) wire frame to the backend and returns
-     * the decoded response {@link MessageFrame}. This is the zero-copy path used
-     * by the gateway router.
-     *
-     * @param rawFrame complete wire bytes (opcode + length + Fury payload)
-     * @return decoded response frame
-     */
-    public MessageFrame request(byte[] rawFrame) throws IOException {
+    /** Sends an already-framed Fory request without re-serializing it. */
+    public Object request(byte[] rawFrame) throws IOException {
         try {
             ensureConnected();
-            return sendOnStream(rawFrame);
+            return sendRawOnStream(rawFrame);
         } catch (IOException e) {
             closeConnection();
             throw e;
@@ -75,15 +59,18 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    /**
-     * Encodes the given {@link MessageFrame} and forwards it to the backend.
-     * Convenience method for cases where the caller already holds a decoded frame.
-     *
-     * @param frame the frame to encode and forward
-     * @return decoded response frame
-     */
-    public MessageFrame request(MessageFrame frame) throws IOException {
-        return request(WireCodec.encode(frame));
+    /** Serializes and sends a request object through the Fory pipeline. */
+    public Object request(Object request) throws IOException {
+        try {
+            ensureConnected();
+            return sendObjectOnStream(request);
+        } catch (IOException e) {
+            closeConnection();
+            throw e;
+        } catch (Exception e) {
+            closeConnection();
+            throw new IOException("QUIC backend request failed: " + e.getMessage(), e);
+        }
     }
 
     @Override
@@ -141,16 +128,45 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    private MessageFrame sendOnStream(byte[] rawFrame) throws Exception {
-        CompletableFuture<MessageFrame> future = new CompletableFuture<>();
-        ResponseStreamHandler handler = new ResponseStreamHandler(future);
+    private Object sendRawOnStream(byte[] rawFrame) throws Exception {
+        return sendOnStream(
+            stream -> stream.pipeline().addLast(new ForyDecoder()),
+            Unpooled.wrappedBuffer(rawFrame)
+        );
+    }
 
-        QuicStreamChannel stream = quicChannel.createStream(QuicStreamType.BIDIRECTIONAL, handler)
+    private Object sendObjectOnStream(Object request) throws Exception {
+        return sendOnStream(
+            stream -> stream.pipeline()
+                .addLast(new ForyDecoder())
+                .addLast(new ForyEncoder()),
+            request
+        );
+    }
+
+    private Object sendOnStream(StreamPipelineConfigurer pipelineConfigurer, Object outbound) throws Exception {
+        CompletableFuture<Object> future = new CompletableFuture<>();
+
+        QuicStreamChannel stream = quicChannel.createStream(
+                QuicStreamType.BIDIRECTIONAL,
+                new ChannelInitializer<QuicStreamChannel>() {
+                    @Override
+                    protected void initChannel(QuicStreamChannel ch) {
+                        pipelineConfigurer.configure(ch);
+                        ch.pipeline().addLast(new ResponseStreamHandler(future));
+                    }
+                })
             .sync()
             .getNow();
 
-        stream.writeAndFlush(Unpooled.wrappedBuffer(rawFrame))
-            .addListener(f -> stream.shutdownOutput());
+        stream.writeAndFlush(outbound).addListener(f -> {
+            if (!f.isSuccess()) {
+                future.completeExceptionally(f.cause());
+                stream.close();
+                return;
+            }
+            stream.shutdownOutput();
+        });
 
         try {
             return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
@@ -188,57 +204,24 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    // ── Response stream handler ───────────────────────────────────────────────
-
     private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
-        private final CompletableFuture<MessageFrame> future;
-        /** Accumulates raw bytes until we have a full framed response. */
-        private byte[] buffer = new byte[0];
+        private final CompletableFuture<Object> future;
 
-        ResponseStreamHandler(CompletableFuture<MessageFrame> future) {
+        ResponseStreamHandler(CompletableFuture<Object> future) {
             this.future = future;
         }
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf buf = (ByteBuf) msg;
-            try {
-                int readable = buf.readableBytes();
-                byte[] chunk = new byte[readable];
-                buf.readBytes(chunk);
-                buffer = concat(buffer, chunk);
-            } finally {
-                buf.release();
+            if (future.complete(msg)) {
+                ctx.close();
             }
-            tryDecode(ctx);
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             if (!future.isDone()) {
-                tryDecode(ctx);
-                if (!future.isDone()) {
-                    future.completeExceptionally(new IOException("Stream closed before full response received"));
-                }
-            }
-        }
-
-        private void tryDecode(ChannelHandlerContext ctx) {
-            if (future.isDone()) return;
-            if (buffer.length < WireCodec.PAYLOAD_OFFSET) return;
-            int totalLen;
-            try {
-                totalLen = WireCodec.framedLength(buffer);
-            } catch (IllegalArgumentException e) {
-                return; // not enough bytes yet for the length field
-            }
-            if (buffer.length < totalLen) return;
-
-            try {
-                future.complete(WireCodec.decode(buffer));
-                ctx.close();
-            } catch (Exception e) {
-                future.completeExceptionally(e);
+                future.completeExceptionally(new IOException("Stream closed before response received"));
             }
         }
 
@@ -247,12 +230,10 @@ public final class QuicGatewayClient implements AutoCloseable {
             future.completeExceptionally(cause);
             ctx.close();
         }
+    }
 
-        private static byte[] concat(byte[] a, byte[] b) {
-            byte[] result = new byte[a.length + b.length];
-            System.arraycopy(a, 0, result, 0, a.length);
-            System.arraycopy(b, 0, result, a.length, b.length);
-            return result;
-        }
+    @FunctionalInterface
+    private interface StreamPipelineConfigurer {
+        void configure(QuicStreamChannel stream);
     }
 }

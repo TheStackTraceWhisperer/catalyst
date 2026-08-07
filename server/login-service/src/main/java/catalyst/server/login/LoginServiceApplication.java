@@ -1,6 +1,8 @@
 package catalyst.server.login;
 
 import catalyst.common.concurrency.TaskScheduler;
+import catalyst.common.network.ObjectDispatcher;
+import catalyst.common.dto.LoginRequest;
 import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.handler.LoginHandler;
 import catalyst.server.login.transport.QuicServerTransport;
@@ -36,7 +38,10 @@ public class LoginServiceApplication {
         loginHandler.bootstrapDevAccount();
         schedulePeriodicPruning();
 
-        transport.setDispatcher(loginHandler::handle);
+        ObjectDispatcher dispatcher = new ObjectDispatcher();
+        dispatcher.register(LoginRequest.class, loginHandler::handle);
+
+        transport.setDispatcher(dispatcher::dispatch);
         Thread.ofVirtual().start(() -> {
             try {
                 transport.start();

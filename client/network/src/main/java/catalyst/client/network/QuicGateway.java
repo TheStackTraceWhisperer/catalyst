@@ -1,15 +1,13 @@
 package catalyst.client.network;
 
-import catalyst.common.network.MessageFrame;
-import catalyst.common.network.WireCodec;
+import catalyst.common.network.ForyDecoder;
+import catalyst.common.network.ForyEncoder;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.ByteBuf;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
+import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
@@ -19,6 +17,7 @@ import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
+
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
@@ -35,10 +34,10 @@ final class QuicGateway implements AutoCloseable {
     private String connectedHost;
     private int connectedPort;
 
-    synchronized MessageFrame request(String host, int port, MessageFrame frame) throws IOException {
+    synchronized <T> T request(String host, int port, Object request, Class<T> responseType) throws IOException {
         try {
             ensureConnected(host, port);
-            return sendOnStream(WireCodec.encode(frame));
+            return sendOnStream(request, responseType);
         } catch (IOException e) {
             closeConnection();
             throw e;
@@ -98,22 +97,37 @@ final class QuicGateway implements AutoCloseable {
         connectedPort = port;
     }
 
-    private MessageFrame sendOnStream(byte[] rawFrame) throws Exception {
-        CompletableFuture<MessageFrame> future = new CompletableFuture<>();
-        ResponseStreamHandler handler = new ResponseStreamHandler(future);
+    private <T> T sendOnStream(Object request, Class<T> responseType) throws Exception {
+        CompletableFuture<T> future = new CompletableFuture<>();
+        ResponseStreamHandler<T> handler = new ResponseStreamHandler<>(future, responseType);
 
-        QuicStreamChannel stream = quicChannel.createStream(QuicStreamType.BIDIRECTIONAL, handler)
+        QuicStreamChannel stream = quicChannel.createStream(QuicStreamType.BIDIRECTIONAL,
+                new ChannelInitializer<QuicStreamChannel>() {
+                    @Override
+                    protected void initChannel(QuicStreamChannel ch) {
+                        ch.pipeline()
+                            .addLast(new ForyDecoder())
+                            .addLast(new ForyEncoder())
+                            .addLast(handler);
+                    }
+                })
             .sync()
             .getNow();
 
-        stream.writeAndFlush(Unpooled.wrappedBuffer(rawFrame))
-            .addListener(f -> stream.shutdownOutput());
+        stream.writeAndFlush(request).addListener(writeFuture -> {
+            if (!writeFuture.isSuccess()) {
+                future.completeExceptionally(writeFuture.cause());
+                stream.close();
+                return;
+            }
+            stream.shutdownOutput();
+        });
 
         try {
             return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             stream.close();
-            throw new IOException("Request timed out: " + rawFrame[0]);
+            throw new IOException("Request timed out for " + request.getClass().getSimpleName(), e);
         }
     }
 
@@ -138,55 +152,33 @@ final class QuicGateway implements AutoCloseable {
         connectedPort = 0;
     }
 
-    private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
-        private final CompletableFuture<MessageFrame> future;
-        /** Byte accumulation buffer for framed binary response. */
-        private byte[] buffer = new byte[0];
+    private static final class ResponseStreamHandler<T> extends SimpleChannelInboundHandler<Object> {
+        private final CompletableFuture<T> future;
+        private final Class<T> responseType;
 
-        ResponseStreamHandler(CompletableFuture<MessageFrame> future) {
+        ResponseStreamHandler(CompletableFuture<T> future, Class<T> responseType) {
             this.future = future;
+            this.responseType = responseType;
         }
 
         @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            ByteBuf buf = (ByteBuf) msg;
+        protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
             try {
-                int readable = buf.readableBytes();
-                byte[] chunk = new byte[readable];
-                buf.readBytes(chunk);
-                buffer = concat(buffer, chunk);
-            } finally {
-                buf.release();
+                future.complete(responseType.cast(msg));
+                ctx.close();
+            } catch (ClassCastException e) {
+                future.completeExceptionally(new IOException(
+                    "Unexpected response type: expected " + responseType.getSimpleName()
+                        + " but received " + msg.getClass().getSimpleName(),
+                    e));
+                ctx.close();
             }
-            tryDecode(ctx);
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             if (!future.isDone()) {
-                tryDecode(ctx);
-                if (!future.isDone()) {
-                    future.completeExceptionally(new IOException("Stream closed before full response received"));
-                }
-            }
-        }
-
-        private void tryDecode(ChannelHandlerContext ctx) {
-            if (future.isDone()) return;
-            if (buffer.length < WireCodec.PAYLOAD_OFFSET) return;
-            int totalLen;
-            try {
-                totalLen = WireCodec.framedLength(buffer);
-            } catch (IllegalArgumentException e) {
-                return;
-            }
-            if (buffer.length < totalLen) return;
-
-            try {
-                future.complete(WireCodec.decode(buffer));
-                ctx.close();
-            } catch (Exception e) {
-                future.completeExceptionally(e);
+                future.completeExceptionally(new IOException("Stream closed before response received"));
             }
         }
 
@@ -194,13 +186,6 @@ final class QuicGateway implements AutoCloseable {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             future.completeExceptionally(cause);
             ctx.close();
-        }
-
-        private static byte[] concat(byte[] a, byte[] b) {
-            byte[] result = new byte[a.length + b.length];
-            System.arraycopy(a, 0, result, 0, a.length);
-            System.arraycopy(b, 0, result, a.length, b.length);
-            return result;
         }
     }
 }

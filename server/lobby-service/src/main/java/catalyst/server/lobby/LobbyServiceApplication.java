@@ -1,6 +1,7 @@
 package catalyst.server.lobby;
 
-import catalyst.common.network.MessageFrame;
+import catalyst.common.network.ObjectDispatcher;
+import catalyst.common.dto.*;
 import catalyst.server.lobby.properties.ServerProperties;
 import catalyst.server.lobby.handler.LobbyHandler;
 import catalyst.server.lobby.transport.QuicServerTransport;
@@ -26,7 +27,14 @@ public class LobbyServiceApplication {
 
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
-        transport.setDispatcher(this::dispatch);
+        ObjectDispatcher dispatcher = new ObjectDispatcher();
+        dispatcher.register(CharListRequest.class, lobbyHandler::handleList);
+        dispatcher.register(CharCreateRequest.class, lobbyHandler::handleCreate);
+        dispatcher.register(CharSelectRequest.class, lobbyHandler::handleSelect);
+        dispatcher.register(CharDeleteRequest.class, lobbyHandler::handleDelete);
+        dispatcher.register(PlayRequest.class, lobbyHandler::handlePlay);
+
+        transport.setDispatcher(dispatcher::dispatch);
         Thread.ofVirtual().start(() -> {
             try {
                 transport.start();
@@ -36,19 +44,5 @@ public class LobbyServiceApplication {
                 log.error("Failed to start Lobby transport", e);
             }
         });
-    }
-
-    private MessageFrame dispatch(MessageFrame req) {
-        return switch (req.type()) {
-            case "CHAR_LIST"   -> lobbyHandler.handleList(req);
-            case "CHAR_CREATE" -> lobbyHandler.handleCreate(req);
-            case "CHAR_SELECT" -> lobbyHandler.handleSelect(req);
-            case "CHAR_DELETE" -> lobbyHandler.handleDelete(req);
-            case "PLAY"        -> lobbyHandler.handlePlay(req);
-            default            -> MessageFrame.builder("ERROR")
-                                    .put("code", "UNKNOWN_REQUEST")
-                                    .put("message", "Lobby Service unsupported: " + req.type())
-                                    .build();
-        };
     }
 }

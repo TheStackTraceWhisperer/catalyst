@@ -1,10 +1,8 @@
 package catalyst.server.login.handler;
 
-import catalyst.common.network.MessageFrame;
 import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.LoginRequest;
 import catalyst.common.dto.LoginResponse;
-import catalyst.common.dto.ProtocolMapper;
 import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.repository.AccountRepository;
 import catalyst.server.common.repository.AuthTicketStore;
@@ -25,44 +23,35 @@ public class LoginHandler {
     private final AuthTicketStore tickets;
     private final ServerProperties props;
 
-    public MessageFrame handle(MessageFrame reqFrame) {
-        LoginRequest req;
-        try {
-            req = ProtocolMapper.toLoginRequest(reqFrame);
-        } catch (IllegalArgumentException e) {
-            return error("LOGIN_ERR", "INVALID_CREDENTIALS", e.getMessage());
-        }
-
+    public LoginResponse handle(LoginRequest req) {
         String username = normalize(req.username());
         String password = normalize(req.password());
         if (username.isBlank() || password.isBlank()) {
-            return error("LOGIN_ERR", "INVALID_CREDENTIALS", "Username and password are required");
+            return error(ResponseCode.UNAUTHORIZED, "Username and password are required");
         }
         try {
             var row = accounts.findByUsername(username);
             if (row.isEmpty()) {
                 log.info("LOGIN_ERR user={} reason=not_found", username);
-                return error("LOGIN_ERR", "INVALID_CREDENTIALS", "Invalid username or password");
+                return error(ResponseCode.UNAUTHORIZED, "Invalid username or password");
             }
             var account = row.get();
             if (!"active".equalsIgnoreCase(account.status())) {
                 log.info("LOGIN_ERR user={} account={} reason=not_active", username, account.id());
-                return error("LOGIN_ERR", "ACCOUNT_DISABLED", "Account is not active");
+                return error(ResponseCode.UNAUTHORIZED, "Account is not active");
             }
             Argon2 argon2 = Argon2Factory.create();
             if (!argon2.verify(account.passwordHash(), password.toCharArray())) {
                 log.info("LOGIN_ERR user={} account={} reason=bad_password", username, account.id());
-                return error("LOGIN_ERR", "INVALID_CREDENTIALS", "Invalid username or password");
+                return error(ResponseCode.UNAUTHORIZED, "Invalid username or password");
             }
             String token = tickets.issue(account.id());
             log.info("LOGIN_OK user={} account={}", username, account.id());
 
-            LoginResponse resp = new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id());
-            return ProtocolMapper.fromLoginResponse(resp);
+            return new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id());
         } catch (SQLException e) {
             log.error("LOGIN_ERR user={} reason=db_error", username, e);
-            LoginResponse resp = new LoginResponse(ResponseCode.ERROR, "Authentication backend unavailable", null, -1);
-            return ProtocolMapper.fromLoginResponse(resp);
+            return error(ResponseCode.ERROR, "Authentication backend unavailable");
         }
     }
 
@@ -92,8 +81,8 @@ public class LoginHandler {
 
     private String normalize(String v) { return v == null ? "" : v.trim(); }
 
-    private MessageFrame error(String type, String code, String message) {
-        return MessageFrame.builder(type).put("code", code).put("message", message).build();
+    private LoginResponse error(ResponseCode code, String message) {
+        return new LoginResponse(code, message, null, -1);
     }
 
     public void cleanupTickets() { tickets.removeExpired(); }

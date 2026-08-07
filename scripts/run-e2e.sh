@@ -15,79 +15,91 @@ if [[ ! -x "${MVN}" ]]; then
   MVN="mvn"
 fi
 
-TEST_PORT=35559
-CONTAINER_NAME="catalyst-postgres-e2e"
-DB_PORT=55432
-CATALYST_DB_URL="jdbc:postgresql://localhost:${DB_PORT}/catalyst"
+CLUSTER_NAME="catalyst"
+TEST_PORT=35555
 
-echo "=== Milestone 5 E2E Test Suite ==="
-
-# 1. Spawn Postgres test container
-echo "[e2e] starting database container ${CONTAINER_NAME} on port ${DB_PORT}..."
-CONTAINER_NAME="${CONTAINER_NAME}" DB_PORT="${DB_PORT}" DB_NAME="catalyst" DB_USER="catalyst" DB_PASSWORD="catalyst" ./scripts/up-postgres.sh
-
-# 2. Build code packages
-echo "[e2e] package compiling client/server modules..."
-"${MVN}" -q -DskipTests clean package
-
-# 3. Spawn microservices in background
-echo "[e2e] booting login, lobby, world, and gateway services in background..."
-export CATALYST_SERVER_DB_URL="${CATALYST_DB_URL}"
-export CATALYST_SERVER_DB_USER="catalyst"
-export CATALYST_SERVER_DB_PASSWORD="catalyst"
-
-# Legacy/fallback environment variables
-export CATALYST_DB_URL="${CATALYST_DB_URL}"
-export CATALYST_DB_USER="catalyst"
-export CATALYST_DB_PASSWORD="catalyst"
-
-# Boot Login Service (Port 35561)
-LOGIN_JAR="${ROOT_DIR}/server/login-service/target/catalyst-login-service-1.0-SNAPSHOT.jar"
-export CATALYST_SERVER_PORT=35561
-java -cp "${LOGIN_JAR}:${ROOT_DIR}/server/login-service/target/lib/*" \
-     --enable-native-access=ALL-UNNAMED \
-     catalyst.server.login.LoginServiceApplication > login-e2e.log 2>&1 &
-LOGIN_PID=$!
-
-# Boot Lobby Service (Port 35562)
-LOBBY_JAR="${ROOT_DIR}/server/lobby-service/target/catalyst-lobby-service-1.0-SNAPSHOT.jar"
-export CATALYST_SERVER_PORT=35562
-java -cp "${LOBBY_JAR}:${ROOT_DIR}/server/lobby-service/target/lib/*" \
-     --enable-native-access=ALL-UNNAMED \
-     catalyst.server.lobby.LobbyServiceApplication > lobby-e2e.log 2>&1 &
-LOBBY_PID=$!
-
-# Boot World Service (Port 35563)
-WORLD_JAR="${ROOT_DIR}/server/world-service/target/catalyst-world-service-1.0-SNAPSHOT.jar"
-export CATALYST_SERVER_PORT=35563
-java -cp "${WORLD_JAR}:${ROOT_DIR}/server/world-service/target/lib/*" \
-     --enable-native-access=ALL-UNNAMED \
-     catalyst.server.world.WorldServiceApplication > world-e2e.log 2>&1 &
-WORLD_PID=$!
-
-# Boot Gateway Service (Port TEST_PORT)
-GATEWAY_JAR="${ROOT_DIR}/gateway/target/catalyst-gateway-1.0-SNAPSHOT.jar"
-export CATALYST_GATEWAY_PORT="${TEST_PORT}"
-java -cp "${GATEWAY_JAR}:${ROOT_DIR}/gateway/target/lib/*" \
-     --enable-native-access=ALL-UNNAMED \
-     catalyst.gateway.GatewayApplication > gateway-e2e.log 2>&1 &
-GATEWAY_PID=$!
-
+# Register trap and cleanup at start to protect build/run stages
 function cleanup {
-  echo "[e2e] cleaning up background processes..."
-  kill -9 "${LOGIN_PID}" "${LOBBY_PID}" "${WORLD_PID}" "${GATEWAY_PID}" || true
-  docker rm -f "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  local exit_code=$?
+  if [ $exit_code -ne 0 ]; then
+    echo "[e2e] Test failed with exit code $exit_code. Dumping pod logs:"
+    echo "=== KUBERNETES PODS STATUS ==="
+    kubectl get pods || true
+    echo "=== GATEWAY LOGS ==="
+    kubectl logs deployment/gateway --tail=100 || true
+    echo "=== LOGIN SERVICE LOGS ==="
+    kubectl logs deployment/login-service --tail=100 || true
+    echo "=== LOBBY SERVICE LOGS ==="
+    kubectl logs deployment/lobby-service --tail=100 || true
+    echo "=== WORLD SERVICE LOGS ==="
+    kubectl logs deployment/world-service --tail=100 || true
+    echo "=== POSTGRES LOGS ==="
+    kubectl logs deployment/postgres --tail=100 || true
+  fi
+
+  if [[ "${CI:-false}" == "true" ]]; then
+    echo "[e2e] CI detected. Deleting cluster..."
+    k3d cluster delete "${CLUSTER_NAME}" || true
+  fi
 }
 trap cleanup EXIT
 
-# Wait for server to boot up by monitoring output logs or trying to connect
-echo "[e2e] waiting for server to launch..."
-sleep 5
+echo "=== Kubernetes k3d-based E2E Test Suite ==="
 
-# 4. Execute E2E harness
-echo "[e2e] running protocol validation test client..."
-TESTS_JAR="${ROOT_DIR}/tests/target/catalyst-tests-1.0-SNAPSHOT.jar"
-java -cp "${TESTS_JAR}:${ROOT_DIR}/tests/target/lib/*" \
-     catalyst.tests.e2e.E2EValidationHarness localhost "${TEST_PORT}"
+# 1. Check if k3d is installed, otherwise install it (especially for CI)
+if ! command -v k3d &> /dev/null; then
+  echo "[e2e] k3d not found. Installing k3d..."
+  curl -s https://raw.githubusercontent.com/k3d-io/k3d/main/install.sh | TAG=v5.6.0 bash
+fi
+
+# 2. Check if kubectl is installed, otherwise install it
+if ! command -v kubectl &> /dev/null; then
+  echo "[e2e] kubectl not found. Installing kubectl..."
+  curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+  chmod +x kubectl
+  mkdir -p ~/.local/bin
+  mv kubectl ~/.local/bin/
+  export PATH="${HOME}/.local/bin:${PATH}"
+fi
+
+# 3. Create k3d cluster if it doesn't exist
+if ! k3d cluster list | grep -q "${CLUSTER_NAME}"; then
+  echo "[e2e] Creating k3d cluster ${CLUSTER_NAME}..."
+  k3d cluster create "${CLUSTER_NAME}" --port "${TEST_PORT}:${TEST_PORT}/udp@loadbalancer"
+fi
+
+# 4. Build postgres image and microservices
+echo "[e2e] Building postgres image..."
+docker build -t catalyst-postgres:17 docker/postgres
+
+echo "[e2e] Compiling and containerizing microservices with Jib..."
+"${MVN}" -q -DskipTests clean package jib:dockerBuild
+
+# 5. Import images into k3d
+echo "[e2e] Importing images into k3d..."
+k3d image import catalyst-postgres:17 \
+  catalyst-catalyst-login-service:latest \
+  catalyst-catalyst-lobby-service:latest \
+  catalyst-catalyst-world-service:latest \
+  catalyst-catalyst-gateway:latest \
+  -c "${CLUSTER_NAME}"
+
+# 6. Apply Kubernetes manifests
+echo "[e2e] Applying Kubernetes manifests..."
+kubectl apply -f k8s/01-postgres.yaml
+kubectl apply -f k8s/02-microservices.yaml
+kubectl apply -f k8s/03-gateway.yaml
+
+# 7. Wait for deployments to be ready
+echo "[e2e] Waiting for deployments to rollout..."
+kubectl rollout status deployment/postgres --timeout=90s
+kubectl rollout status deployment/login-service --timeout=90s
+kubectl rollout status deployment/lobby-service --timeout=90s
+kubectl rollout status deployment/world-service --timeout=90s
+kubectl rollout status deployment/gateway --timeout=90s
+
+# 8. Execute E2E harness
+echo "[e2e] Running protocol validation test client..."
+"${MVN}" exec:java -pl tests -Dexec.mainClass="catalyst.tests.e2e.E2EValidationHarness" -Dexec.args="localhost ${TEST_PORT}"
 
 echo "[e2e] E2E validation passed successfully!"

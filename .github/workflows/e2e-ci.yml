@@ -26,11 +26,3 @@ jobs:
         run: |
           chmod +x scripts/*.sh
           ./scripts/run-e2e.sh
-
-      - name: Upload Server E2E Logs
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: server-e2e-logs
-          path: server-e2e.log
-          retention-days: 7

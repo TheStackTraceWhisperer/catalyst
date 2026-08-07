@@ -83,8 +83,16 @@ public class LoginHandler {
             Argon2 argon2 = Argon2Factory.create();
             String hash = argon2.hash(props.getArgon2Iterations(), props.getArgon2MemoryKib(),
                 props.getArgon2Parallelism(), "dev".toCharArray());
-            accounts.insert("dev", hash, "active");
-            log.info("Bootstrapped dev account");
+            try {
+                accounts.insert("dev", hash, "active");
+                log.info("Bootstrapped dev account");
+            } catch (SQLException e) {
+                if ("23505".equals(e.getSQLState())) {
+                    log.info("Bootstrap account 'dev' already present (concurrent insert)");
+                } else {
+                    throw e;
+                }
+            }
         } catch (SQLException e) {
             log.error("Bootstrap dev account failed", e);
         }

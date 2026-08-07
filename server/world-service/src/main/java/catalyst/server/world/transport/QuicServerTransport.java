@@ -47,6 +47,12 @@ public final class QuicServerTransport {
         this.dispatcher = dispatcher;
     }
 
+    private volatile boolean bound = false;
+
+    public boolean isBound() {
+        return bound;
+    }
+
     public void start() throws Exception {
         SelfSignedCertificate cert = new SelfSignedCertificate();
         QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
@@ -78,6 +84,7 @@ public final class QuicServerTransport {
             .sync()
             .channel();
 
+        bound = true;
         log.info("QUIC server bound on UDP port {}", props.getPort());
     }
 

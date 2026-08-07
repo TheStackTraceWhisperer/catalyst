@@ -1,4 +1,4 @@
-package catalyst.server.login.config;
+package catalyst.server.login.properties;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
 

@@ -1,7 +1,7 @@
 package catalyst.server.world;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.server.world.config.ServerProperties;
+import catalyst.server.world.properties.ServerProperties;
 import catalyst.server.world.dispatch.MessageDispatcher;
 import catalyst.server.world.repository.SessionRepository;
 import catalyst.server.world.transport.QuicServerTransport;

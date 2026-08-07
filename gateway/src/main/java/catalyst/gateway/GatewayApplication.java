@@ -1,6 +1,6 @@
 package catalyst.gateway;
 
-import catalyst.gateway.config.GatewayProperties;
+import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.transport.GatewayServer;
 import io.micronaut.runtime.Micronaut;
 import io.micronaut.context.event.StartupEvent;

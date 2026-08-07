@@ -2,7 +2,7 @@ package catalyst.server.lobby.transport;
 
 import catalyst.common.network.MessageFrame;
 import catalyst.common.network.WireCodec;
-import catalyst.server.lobby.config.ServerProperties;
+import catalyst.server.lobby.properties.ServerProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;

@@ -1,4 +1,4 @@
-package catalyst.gateway.config;
+package catalyst.gateway.properties;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
 

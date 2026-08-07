@@ -1,7 +1,7 @@
 package catalyst.server.login;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.server.login.config.ServerProperties;
+import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.handler.LoginHandler;
 import catalyst.server.login.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;

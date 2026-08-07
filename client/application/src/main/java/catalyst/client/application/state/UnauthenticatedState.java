@@ -1,6 +1,6 @@
 package catalyst.client.application.state;
 
-import catalyst.client.application.config.ClientProperties;
+import catalyst.client.application.properties.ClientProperties;
 import catalyst.client.network.QuicGatewayService;
 import catalyst.client.application.ui.DebugLogPanel;
 import catalyst.client.application.ui.LoginPanel;

@@ -3,7 +3,7 @@ package catalyst.server.world.handler;
 import catalyst.common.network.MessageFrame;
 import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.*;
-import catalyst.server.world.config.ServerProperties;
+import catalyst.server.world.properties.ServerProperties;
 import catalyst.server.world.repository.CharacterRepository;
 import catalyst.server.world.repository.SessionRepository;
 import catalyst.server.common.repository.AuthTicketStore;

@@ -5,7 +5,7 @@ import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.LoginRequest;
 import catalyst.common.dto.LoginResponse;
 import catalyst.common.dto.ProtocolMapper;
-import catalyst.server.login.config.ServerProperties;
+import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.repository.AccountRepository;
 import catalyst.server.common.repository.AuthTicketStore;
 import de.mkammerer.argon2.Argon2;

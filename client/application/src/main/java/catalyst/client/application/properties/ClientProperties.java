@@ -1,4 +1,4 @@
-package catalyst.client.application.config;
+package catalyst.client.application.properties;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
 import io.micronaut.core.bind.annotation.Bindable;

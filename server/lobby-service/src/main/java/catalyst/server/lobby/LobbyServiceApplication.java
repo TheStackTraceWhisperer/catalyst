@@ -1,7 +1,7 @@
 package catalyst.server.lobby;
 
 import catalyst.common.network.MessageFrame;
-import catalyst.server.lobby.config.ServerProperties;
+import catalyst.server.lobby.properties.ServerProperties;
 import catalyst.server.lobby.handler.LobbyHandler;
 import catalyst.server.lobby.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;

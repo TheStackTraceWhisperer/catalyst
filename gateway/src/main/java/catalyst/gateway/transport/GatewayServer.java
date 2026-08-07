@@ -2,7 +2,7 @@ package catalyst.gateway.transport;
 
 import catalyst.common.network.MessageFrame;
 import catalyst.common.network.WireCodec;
-import catalyst.gateway.config.GatewayProperties;
+import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.QuicGatewayClient;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;

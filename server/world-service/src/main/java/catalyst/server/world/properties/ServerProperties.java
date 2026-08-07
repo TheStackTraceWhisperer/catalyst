@@ -1,4 +1,4 @@
-package catalyst.server.lobby.config;
+package catalyst.server.world.properties;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
 

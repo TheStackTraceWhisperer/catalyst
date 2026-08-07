@@ -28,18 +28,18 @@ We will implement the dispatching model defined in the [Phase 2.5 Concurrency Di
 
 ```mermaid
 graph TD
-    Client[Client Connection] -->|GatewayFrame| GW[Gateway Server]
-    GW -->|GatewayFrame| Netty[Netty EventLoop]
-    Netty -->|Instant Offload| Dispatcher{Dispatcher}
+    Client["Client Connection"] -->|GatewayFrame| GW["Gateway Server"]
+    GW -->|GatewayFrame| Netty["Netty EventLoop"]
+    Netty -->|Instant Offload| Dispatcher{"Dispatcher Decision"}
     
-    subgraph Stateless Services (Login/Lobby)
-        Dispatcher -->|Virtual Thread| VT[VT Worker Pool]
-        VT -->|Safe Block| DB[(JDBC PostgreSQL)]
+    subgraph "Stateless Services (Login / Lobby)"
+        Dispatcher -->|Virtual Thread| VT["VT Worker Pool"]
+        VT -->|Safe Block| DB[("JDBC PostgreSQL")]
     end
 
-    subgraph Stateful Services (World)
-        Dispatcher -->|Queue| Queue(Zone Queue)
-        Queue -->|Sequential Process| Loop[10Hz Tick Loop]
+    subgraph "Stateful Services (World)"
+        Dispatcher -->|Queue| Queue("Zone Queue")
+        Queue -->|Sequential Process| Loop["10Hz Tick Loop"]
     end
 ```
 

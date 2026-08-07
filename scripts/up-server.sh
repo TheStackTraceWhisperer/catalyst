@@ -4,38 +4,55 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-# Use SDKMAN Java 25 if available, otherwise fall back to JAVA_HOME or PATH
-SDKMAN_JAVA_25="${HOME}/.sdkman/candidates/java/current"
-if [[ -d "${SDKMAN_JAVA_25}" ]]; then
-  export JAVA_HOME="${SDKMAN_JAVA_25}"
-  export PATH="${JAVA_HOME}/bin:${PATH}"
-fi
-MVN="${HOME}/.sdkman/candidates/maven/current/bin/mvn"
-if [[ ! -x "${MVN}" ]]; then
-  MVN="mvn"
-fi
+CLUSTER_NAME="catalyst"
+TEST_PORT=35555
 
-PORT="${1:-35555}"
-export CATALYST_SERVER_PORT="${PORT}"
-export CATALYST_SERVER_DB_URL="${CATALYST_DB_URL:-jdbc:postgresql://localhost:5432/catalyst}"
-export CATALYST_SERVER_DB_USER="${CATALYST_DB_USER:-catalyst}"
-export CATALYST_SERVER_DB_PASSWORD="${CATALYST_DB_PASSWORD:-catalyst}"
+echo "=== Bringing up Catalyst Server Environment in k3d cluster ==="
 
-# Legacy/fallback environment variables
-export CATALYST_DB_URL="${CATALYST_SERVER_DB_URL}"
-export CATALYST_DB_USER="${CATALYST_SERVER_DB_USER}"
-export CATALYST_DB_PASSWORD="${CATALYST_SERVER_DB_PASSWORD}"
-
-echo "[server] building modules (Java $(java -version 2>&1 | head -1))..."
-"${MVN}" -q -DskipTests package -pl server -am
-
-echo "[server] starting on port ${PORT}..."
-SERVER_JAR="${ROOT_DIR}/server/target/catalyst-server-1.0-SNAPSHOT.jar"
-if [[ ! -f "${SERVER_JAR}" ]]; then
-  echo "[server] missing jar: ${SERVER_JAR}" >&2
+# 1. Check prerequisites
+if ! command -v k3d &> /dev/null || ! command -v kubectl &> /dev/null; then
+  echo "[server] k3d or kubectl not found. Please ensure they are installed." >&2
   exit 1
 fi
-echo "[server] db=${CATALYST_SERVER_DB_URL} user=${CATALYST_SERVER_DB_USER}"
-java -cp "${SERVER_JAR}:${ROOT_DIR}/server/target/lib/*" \
-     --enable-native-access=ALL-UNNAMED \
-     catalyst.server.ServerApplication
+
+# 2. Ensure cluster exists
+if ! k3d cluster list | grep -q "${CLUSTER_NAME}"; then
+  echo "[server] Creating k3d cluster ${CLUSTER_NAME}..."
+  k3d cluster create "${CLUSTER_NAME}" --port "${TEST_PORT}:${TEST_PORT}/udp@loadbalancer"
+fi
+
+# 3. Build postgres image and microservices
+echo "[server] Building postgres image..."
+docker build -t catalyst-postgres:17 docker/postgres
+
+echo "[server] Compiling and containerizing microservices with Jib..."
+mvn -DskipTests clean package jib:dockerBuild
+
+# 4. Import images into k3d
+echo "[server] Importing images into k3d..."
+k3d image import catalyst-postgres:17 \
+  catalyst-catalyst-login-service:latest \
+  catalyst-catalyst-lobby-service:latest \
+  catalyst-catalyst-world-service:latest \
+  catalyst-catalyst-gateway:latest \
+  -c "${CLUSTER_NAME}"
+
+# 5. Apply all Kubernetes manifests
+echo "[server] Applying Kubernetes manifests..."
+kubectl apply -f k8s/01-postgres.yaml
+kubectl apply -f k8s/02-microservices.yaml
+kubectl apply -f k8s/03-gateway.yaml
+
+# 6. Wait for deployments to be ready
+echo "[server] Waiting for deployments to rollout..."
+kubectl rollout status deployment/postgres --timeout=90s
+kubectl rollout status deployment/login-service --timeout=90s
+kubectl rollout status deployment/lobby-service --timeout=90s
+kubectl rollout status deployment/world-service --timeout=90s
+kubectl rollout status deployment/gateway --timeout=90s
+
+echo "=== Pods status ==="
+kubectl get pods
+
+echo "[server] Catalyst Server environment successfully booted in k3d cluster!"
+echo "[server] Gateway is exposed and listening on UDP port ${TEST_PORT} (QUIC)."

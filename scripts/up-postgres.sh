@@ -4,28 +4,44 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
-IMAGE_NAME="${IMAGE_NAME:-catalyst-postgres:17}"
-CONTAINER_NAME="${CONTAINER_NAME:-catalyst-postgres}"
+CLUSTER_NAME="catalyst"
 DB_PORT="${DB_PORT:-5432}"
-DB_NAME="${DB_NAME:-catalyst}"
-DB_USER="${DB_USER:-catalyst}"
-DB_PASSWORD="${DB_PASSWORD:-catalyst}"
 
-echo "[postgres] building image ${IMAGE_NAME}..."
-docker build -t "${IMAGE_NAME}" docker/postgres
+echo "=== Bringing up PostgreSQL in k3d cluster ==="
 
-if docker ps -a --format '{{.Names}}' | grep -qx "${CONTAINER_NAME}"; then
-  echo "[postgres] removing existing container ${CONTAINER_NAME}..."
-  docker rm -f "${CONTAINER_NAME}" >/dev/null
+# 1. Ensure k3d cluster exists
+if ! command -v k3d &> /dev/null; then
+  echo "[postgres] k3d not found. Please install k3d first." >&2
+  exit 1
 fi
 
-echo "[postgres] starting container ${CONTAINER_NAME} on port ${DB_PORT}..."
-docker run -d \
-  --name "${CONTAINER_NAME}" \
-  -p "${DB_PORT}:5432" \
-  -e POSTGRES_DB="${DB_NAME}" \
-  -e POSTGRES_USER="${DB_USER}" \
-  -e POSTGRES_PASSWORD="${DB_PASSWORD}" \
-  "${IMAGE_NAME}" >/dev/null
+if ! k3d cluster list | grep -q "${CLUSTER_NAME}"; then
+  echo "[postgres] Creating k3d cluster ${CLUSTER_NAME}..."
+  k3d cluster create "${CLUSTER_NAME}" --port "35555:35555/udp@loadbalancer"
+fi
 
-echo "[postgres] ready: postgres://${DB_USER}:${DB_PASSWORD}@localhost:${DB_PORT}/${DB_NAME}"
+# 2. Build and import postgres image
+echo "[postgres] Building postgres image..."
+docker build -t catalyst-postgres:17 docker/postgres
+
+echo "[postgres] Importing postgres image into k3d..."
+k3d image import catalyst-postgres:17 -c "${CLUSTER_NAME}"
+
+# 3. Apply postgres manifest
+echo "[postgres] Applying k8s manifest..."
+kubectl apply -f k8s/01-postgres.yaml
+
+# 4. Wait for deployment to be ready
+echo "[postgres] Waiting for deployment to rollout..."
+kubectl rollout status deployment/postgres --timeout=90s
+
+# 5. Start port-forwarding in background if port not in use
+if ! nc -z localhost "${DB_PORT}" >/dev/null 2>&1; then
+  echo "[postgres] Starting port-forwarding to localhost:${DB_PORT} in background..."
+  kubectl port-forward svc/postgres "${DB_PORT}:5432" >/dev/null 2>&1 &
+  echo "[postgres] Port-forwarding active."
+else
+  echo "[postgres] Port ${DB_PORT} is already in use. Assuming port-forwarding is already active or handled."
+fi
+
+echo "[postgres] PostgreSQL is ready to accept connections!"

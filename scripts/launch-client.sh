@@ -18,7 +18,7 @@ fi
 echo "[client] building modules (Java $(java -version 2>&1 | head -1))..."
 "${MVN}" -q -DskipTests package -pl client/application -am
 
-echo "[client] launching LWJGL + Dear ImGui client..."
+echo "[client] launching LWJGL + Dear ImGui client (connecting to k3d gateway on localhost:35555)..."
 CLIENT_JAR="${ROOT_DIR}/client/application/target/catalyst-client-application-1.0-SNAPSHOT.jar"
 if [[ ! -f "${CLIENT_JAR}" ]]; then
   echo "[client] missing jar: ${CLIENT_JAR}" >&2

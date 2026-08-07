@@ -100,6 +100,7 @@ kubectl rollout status deployment/gateway --timeout=90s
 
 # 8. Execute E2E harness
 echo "[e2e] Running protocol validation test client..."
+"${MVN}" compile -pl tests -am
 "${MVN}" exec:java -pl tests -Dexec.mainClass="catalyst.tests.e2e.E2EValidationHarness" -Dexec.args="localhost ${TEST_PORT}"
 
 echo "[e2e] E2E validation passed successfully!"

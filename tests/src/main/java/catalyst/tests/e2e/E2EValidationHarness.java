@@ -20,10 +20,10 @@ public final class E2EValidationHarness {
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
             var loginResp = service.login(host, port, "dev", "dev");
             System.out.println("Login Response: " + loginResp);
-            if (ResponseCode.OK != loginResp.getCode()) {
-                throw new AssertionError("LOGIN failed: " + loginResp.getMessage());
+            if (ResponseCode.OK != loginResp.code()) {
+                throw new AssertionError("LOGIN failed: " + loginResp.message());
             }
-            String authToken = loginResp.getAuthToken();
+            String authToken = loginResp.authToken();
             System.out.println("AuthToken acquired: " + authToken);
 
             // 2. CHAR_CREATE
@@ -36,10 +36,10 @@ public final class E2EValidationHarness {
                 host, port, authToken, charName, 1, 1, 3, 1, "0"
             );
             System.out.println("Create Response: " + createResp);
-            if (ResponseCode.OK != createResp.getCode()) {
-                throw new AssertionError("CHAR_CREATE failed: " + createResp.getMessage());
+            if (ResponseCode.OK != createResp.code()) {
+                throw new AssertionError("CHAR_CREATE failed: " + createResp.message());
             }
-            String newCharId = Long.toString(createResp.getCharacterId());
+            String newCharId = Long.toString(createResp.characterId());
             System.out.println("Created character: Name=" + charName + " ID=" + newCharId);
 
             // 3. CHAR_LIST verification
@@ -62,25 +62,25 @@ public final class E2EValidationHarness {
             System.out.println("\nStep 4: Sending CHAR_SELECT...");
             var selectResp = service.selectCharacter(host, port, authToken, newCharId);
             System.out.println("Select Response: " + selectResp);
-            if (ResponseCode.OK != selectResp.getCode()) {
-                throw new AssertionError("CHAR_SELECT failed: " + selectResp.getMessage());
+            if (ResponseCode.OK != selectResp.code()) {
+                throw new AssertionError("CHAR_SELECT failed: " + selectResp.message());
             }
 
             // 5. PLAY
             System.out.println("\nStep 5: Sending PLAY...");
             var playResp = service.play(host, port, authToken, newCharId);
             System.out.println("Play Response: " + playResp);
-            if (ResponseCode.OK != playResp.getCode()) {
-                throw new AssertionError("PLAY failed: " + playResp.getMessage());
+            if (ResponseCode.OK != playResp.code()) {
+                throw new AssertionError("PLAY failed: " + playResp.message());
             }
-            String sessionId = playResp.getSessionId();
+            String sessionId = playResp.sessionId();
             System.out.println("Session ID acquired: " + sessionId);
 
             // 6. PING/PONG validation
             System.out.println("\nStep 6: Sending PING/PONG validation...");
             var pingResp = service.ping(host, port, sessionId);
             System.out.println("Ping Response: " + pingResp);
-            if (!"PONG".equals(pingResp.getType())) {
+            if (!"PONG".equals(pingResp.type())) {
                 throw new AssertionError("PING/PONG failed!");
             }
             System.out.println("PING/PONG validation succeeded.");
@@ -89,7 +89,7 @@ public final class E2EValidationHarness {
             System.out.println("\nStep 7: Sending LOGOUT...");
             var logoutResp = service.logout(host, port, sessionId);
             System.out.println("Logout Response: " + logoutResp);
-            if (logoutResp.getSessionId() == null) {
+            if (logoutResp.sessionId() == null) {
                 throw new AssertionError("LOGOUT failed!");
             }
             System.out.println("LOGOUT succeeded.");
@@ -98,7 +98,7 @@ public final class E2EValidationHarness {
             System.out.println("\nStep 8: Cleanup character...");
             var deleteResp = service.deleteCharacter(host, port, authToken, newCharId);
             System.out.println("Delete Response: " + deleteResp);
-            if (ResponseCode.OK != deleteResp.getCode()) {
+            if (ResponseCode.OK != deleteResp.code()) {
                 throw new AssertionError("Character cleanup failed!");
             }
             System.out.println("Cleanup completed successfully.");

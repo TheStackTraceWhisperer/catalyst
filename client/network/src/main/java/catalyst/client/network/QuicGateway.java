@@ -10,7 +10,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.SimpleChannelInboundHandler;import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.incubator.codec.quic.QuicChannel;
@@ -21,9 +21,6 @@ import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
@@ -38,10 +35,10 @@ final class QuicGateway implements AutoCloseable {
     private String connectedHost;
     private int connectedPort;
 
-    synchronized MessageFrame request(String host, int port, String type, Map<String, String> fields) throws IOException {
+    synchronized MessageFrame request(String host, int port, MessageFrame frame) throws IOException {
         try {
             ensureConnected(host, port);
-            return sendOnStream(type, fields);
+            return sendOnStream(WireCodec.encode(frame));
         } catch (IOException e) {
             closeConnection();
             throw e;
@@ -101,7 +98,7 @@ final class QuicGateway implements AutoCloseable {
         connectedPort = port;
     }
 
-    private MessageFrame sendOnStream(String type, Map<String, String> fields) throws Exception {
+    private MessageFrame sendOnStream(byte[] rawFrame) throws Exception {
         CompletableFuture<MessageFrame> future = new CompletableFuture<>();
         ResponseStreamHandler handler = new ResponseStreamHandler(future);
 
@@ -109,15 +106,14 @@ final class QuicGateway implements AutoCloseable {
             .sync()
             .getNow();
 
-        String encoded = WireCodec.encode(type, fields) + "\n";
-        stream.writeAndFlush(Unpooled.copiedBuffer(encoded, StandardCharsets.UTF_8))
+        stream.writeAndFlush(Unpooled.wrappedBuffer(rawFrame))
             .addListener(f -> stream.shutdownOutput());
 
         try {
             return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             stream.close();
-            throw new IOException("Request timed out: " + type);
+            throw new IOException("Request timed out: " + rawFrame[0]);
         }
     }
 
@@ -144,7 +140,8 @@ final class QuicGateway implements AutoCloseable {
 
     private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
         private final CompletableFuture<MessageFrame> future;
-        private final StringBuilder buffer = new StringBuilder();
+        /** Byte accumulation buffer for framed binary response. */
+        private byte[] buffer = new byte[0];
 
         ResponseStreamHandler(CompletableFuture<MessageFrame> future) {
             this.future = future;
@@ -154,40 +151,42 @@ final class QuicGateway implements AutoCloseable {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf buf = (ByteBuf) msg;
             try {
-                buffer.append(buf.toString(StandardCharsets.UTF_8));
+                int readable = buf.readableBytes();
+                byte[] chunk = new byte[readable];
+                buf.readBytes(chunk);
+                buffer = concat(buffer, chunk);
             } finally {
                 buf.release();
             }
-            int newlineIdx = buffer.indexOf("\n");
-            if (newlineIdx >= 0 && !future.isDone()) {
-                String line = buffer.substring(0, newlineIdx).trim();
-                if (!line.isBlank()) {
-                    try {
-                        future.complete(WireCodec.decode(line));
-                    } catch (Exception e) {
-                        future.completeExceptionally(e);
-                    }
-                } else {
-                    future.completeExceptionally(new IOException("Empty response from server"));
-                }
-                ctx.close();
-            }
+            tryDecode(ctx);
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
-            // Stream closed before a full line arrived
             if (!future.isDone()) {
-                String line = buffer.toString().trim();
-                if (!line.isBlank()) {
-                    try {
-                        future.complete(WireCodec.decode(line));
-                    } catch (Exception e) {
-                        future.completeExceptionally(e);
-                    }
-                } else {
-                    future.completeExceptionally(new IOException("Empty response from server"));
+                tryDecode(ctx);
+                if (!future.isDone()) {
+                    future.completeExceptionally(new IOException("Stream closed before full response received"));
                 }
+            }
+        }
+
+        private void tryDecode(ChannelHandlerContext ctx) {
+            if (future.isDone()) return;
+            if (buffer.length < WireCodec.PAYLOAD_OFFSET) return;
+            int totalLen;
+            try {
+                totalLen = WireCodec.framedLength(buffer);
+            } catch (IllegalArgumentException e) {
+                return;
+            }
+            if (buffer.length < totalLen) return;
+
+            try {
+                future.complete(WireCodec.decode(buffer));
+                ctx.close();
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
         }
 
@@ -195,6 +194,13 @@ final class QuicGateway implements AutoCloseable {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             future.completeExceptionally(cause);
             ctx.close();
+        }
+
+        private static byte[] concat(byte[] a, byte[] b) {
+            byte[] result = new byte[a.length + b.length];
+            System.arraycopy(a, 0, result, 0, a.length);
+            System.arraycopy(b, 0, result, a.length, b.length);
+            return result;
         }
     }
 }

@@ -1,6 +1,7 @@
 package catalyst.gateway.transport;
 
 import catalyst.common.network.MessageFrame;
+import catalyst.common.network.Opcode;
 import catalyst.common.network.WireCodec;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.QuicGatewayClient;
@@ -22,7 +23,6 @@ import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.concurrent.Future;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -37,8 +37,8 @@ public final class GatewayServer {
     private final QuicGatewayClient lobbyClient;
     private final QuicGatewayClient worldClient;
     private final Map<String, String> sessionRoutes = new ConcurrentHashMap<>();
-    
-    // NEW: Connection pool for dynamic world servers to prevent EventLoop leaks
+
+    // Connection pool for dynamic world servers to prevent EventLoop leaks
     private final Map<String, QuicGatewayClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
     private EventLoopGroup group;
@@ -108,13 +108,15 @@ public final class GatewayServer {
         loginClient.close();
         lobbyClient.close();
         worldClient.close();
-        
+
         // Clean up the dynamic pool
         dynamicWorldClients.values().forEach(QuicGatewayClient::close);
         dynamicWorldClients.clear();
-        
+
         sessionRoutes.clear();
     }
+
+    // ── Inner handler ────────────────────────────────────────────────────────
 
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
         private final GatewayProperties props;
@@ -123,7 +125,12 @@ public final class GatewayServer {
         private final QuicGatewayClient worldClient;
         private final Map<String, String> sessionRoutes;
         private final Map<String, QuicGatewayClient> dynamicWorldClients;
-        private final StringBuilder lineBuffer = new StringBuilder();
+
+        /**
+         * Accumulates raw binary bytes until we have a full framed message.
+         * Frame header = 5 bytes (1 opcode + 4 length), then N payload bytes.
+         */
+        private byte[] frameBuffer = new byte[0];
 
         RequestHandler(GatewayProperties props,
                        QuicGatewayClient loginClient,
@@ -143,29 +150,43 @@ public final class GatewayServer {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf buf = (ByteBuf) msg;
             try {
-                lineBuffer.append(buf.toString(StandardCharsets.UTF_8));
-                int newline;
-                while ((newline = lineBuffer.indexOf("\n")) >= 0) {
-                    String line = lineBuffer.substring(0, newline).trim();
-                    lineBuffer.delete(0, newline + 1);
-                    if (line.isBlank()) {
-                        continue;
-                    }
-                    MessageFrame request = WireCodec.decode(line);
-                    MessageFrame response;
+                // Append incoming bytes to our assembly buffer
+                int readable = buf.readableBytes();
+                byte[] chunk = new byte[readable];
+                buf.readBytes(chunk);
+                frameBuffer = concat(frameBuffer, chunk);
 
+                // Process all complete frames in the buffer
+                while (true) {
+                    if (frameBuffer.length < WireCodec.PAYLOAD_OFFSET) break; // need header bytes
+                    int totalLen = WireCodec.framedLength(frameBuffer);
+                    if (frameBuffer.length < totalLen) break; // need more payload bytes
+
+                    // Extract the complete frame
+                    byte[] frame = new byte[totalLen];
+                    System.arraycopy(frameBuffer, 0, frame, 0, totalLen);
+
+                    // Trim consumed bytes from buffer
+                    int remaining = frameBuffer.length - totalLen;
+                    byte[] newBuf = new byte[remaining];
+                    System.arraycopy(frameBuffer, totalLen, newBuf, 0, remaining);
+                    frameBuffer = newBuf;
+
+                    // Route by opcode — no full deserialization needed
+                    Opcode opcode = WireCodec.peekOpcode(frame);
+                    MessageFrame response;
                     try {
-                        response = routeAndForward(request);
+                        response = routeAndForward(opcode, frame);
                     } catch (Exception e) {
-                        log.error("Failed to forward request to backend: {}", request.type(), e);
+                        log.error("Failed to forward request to backend (opcode={})", opcode, e);
                         response = MessageFrame.builder("ERROR")
                             .put("code", "BACKEND_UNAVAILABLE")
                             .put("message", "Backend connection failed: " + e.getMessage())
                             .build();
                     }
 
-                    String encoded = WireCodec.encode(response.type(), response.fields()) + "\n";
-                    ByteBuf out = Unpooled.copiedBuffer(encoded, StandardCharsets.UTF_8);
+                    byte[] encoded = WireCodec.encode(response);
+                    ByteBuf out = Unpooled.wrappedBuffer(encoded);
                     ctx.writeAndFlush(out).addListener((Future<Void> f) -> {
                         ((QuicStreamChannel) ctx.channel()).shutdownOutput();
                     });
@@ -175,86 +196,91 @@ public final class GatewayServer {
             }
         }
 
-        private MessageFrame routeAndForward(MessageFrame request) throws Exception {
-            String type = request.type();
-            switch (type) {
-                case "LOGIN":
-                    return loginClient.request(type, request.fields());
-                
-                case "CHAR_LIST":
-                case "CHAR_CREATE":
-                case "CHAR_DELETE":
-                case "CHAR_SELECT":
-                    return lobbyClient.request(type, request.fields());
-
-                case "PLAY": {
-                    // FIX 1: Forward to Lobby Service, NOT World Service
-                    MessageFrame response = lobbyClient.request(type, request.fields());
-                    
-                    if ("PLAY_OK".equals(response.type()) || "OK".equals(response.fields().get("code"))) {
+        /**
+         * Routes the raw frame bytes to the correct backend using the opcode,
+         * avoiding full deserialization for lobby/world routing decisions.
+         * <p>
+         * For PING and LOGOUT we must decode to read the sessionId for session-based routing.
+         */
+        private MessageFrame routeAndForward(Opcode opcode, byte[] rawFrame) throws Exception {
+            return switch (opcode) {
+                case LOGIN -> {
+                    MessageFrame req = WireCodec.decode(rawFrame);
+                    yield loginClient.request(rawFrame);
+                }
+                case CHAR_LIST, CHAR_CREATE, CHAR_DELETE, CHAR_SELECT -> {
+                    yield lobbyClient.request(rawFrame);
+                }
+                case PLAY -> {
+                    MessageFrame response = lobbyClient.request(rawFrame);
+                    if ("PLAY_OK".equals(response.type())) {
                         String sessionId = response.fields().get("sessionId");
-                        
-                        // Extract the assigned world address from the Lobby's response.
-                        // (If your Lobby doesn't send this yet, it falls back to the default property)
                         String worldAddress = response.fields().get("worldAddress");
                         if (worldAddress == null) {
                             worldAddress = props.getWorldhost() + ":" + props.getWorldport();
                         }
-                        
                         if (sessionId != null) {
-                            // Register session route
                             sessionRoutes.put(sessionId, worldAddress);
                             log.info("Session {} routed to {}", sessionId, worldAddress);
                         }
                     }
-                    return response;
+                    yield response;
                 }
-
-                case "PING":
-                case "LOGOUT": {
-                    String sessionId = request.fields().get("sessionId");
+                case PING, LOGOUT -> {
+                    // Must decode to read sessionId for session-based routing
+                    MessageFrame req = WireCodec.decode(rawFrame);
+                    String sessionId = req.fields().get("sessionId");
                     String target = sessionId != null ? sessionRoutes.get(sessionId) : null;
                     MessageFrame response;
-                    
+
                     if (target != null) {
                         String[] parts = target.split(":");
                         String host = parts[0];
                         int port = Integer.parseInt(parts[1]);
-                        
+
                         if (host.equals(props.getWorldhost()) && port == props.getWorldport()) {
-                            response = worldClient.request(type, request.fields());
+                            response = worldClient.request(rawFrame);
                         } else {
-                            // FIX 2: Fetch existing connection from pool, or create it ONCE
                             QuicGatewayClient targetClient = dynamicWorldClients.computeIfAbsent(
                                 target, k -> {
                                     log.info("Opening new persistent internal connection to {}", target);
                                     return new QuicGatewayClient(host, port);
                                 }
                             );
-                            response = targetClient.request(type, request.fields());
+                            response = targetClient.request(rawFrame);
                         }
                     } else {
-                        response = worldClient.request(type, request.fields());
+                        response = worldClient.request(rawFrame);
                     }
-                    
-                    if ("LOGOUT".equals(type) && sessionId != null) {
+
+                    if (opcode == Opcode.LOGOUT && sessionId != null) {
                         sessionRoutes.remove(sessionId);
                     }
-                    return response;
+                    yield response;
                 }
-
-                default:
-                    return MessageFrame.builder("ERROR")
+                default -> {
+                    log.warn("Unroutable opcode received: {}", opcode);
+                    yield MessageFrame.builder("ERROR")
                         .put("code", "UNSUPPORTED_REQUEST")
-                        .put("message", "Gateway does not route: " + type)
+                        .put("message", "Gateway does not route opcode: " + opcode)
                         .build();
-            }
+                }
+            };
         }
 
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             log.warn("Gateway QUIC stream error", cause);
             ctx.close();
+        }
+
+        // ── Buffer helpers ───────────────────────────────────────────────────
+
+        private static byte[] concat(byte[] a, byte[] b) {
+            byte[] result = new byte[a.length + b.length];
+            System.arraycopy(a, 0, result, 0, a.length);
+            System.arraycopy(b, 0, result, a.length, b.length);
+            return result;
         }
     }
 }

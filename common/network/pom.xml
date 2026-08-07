@@ -15,9 +15,11 @@
   <packaging>jar</packaging>
 
   <dependencies>
+    <!-- Apache Fury – binary serialization for MessageFrame -->
     <dependency>
-      <groupId>org.projectlombok</groupId>
-      <artifactId>lombok</artifactId>
+      <groupId>org.apache.fury</groupId>
+      <artifactId>fury-core</artifactId>
+      <version>${fury.version}</version>
     </dependency>
   </dependencies>
 </project>

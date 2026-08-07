@@ -33,8 +33,8 @@ public class LoginHandler {
             return error("LOGIN_ERR", "INVALID_CREDENTIALS", e.getMessage());
         }
 
-        String username = normalize(req.getUsername());
-        String password = normalize(req.getPassword());
+        String username = normalize(req.username());
+        String password = normalize(req.password());
         if (username.isBlank() || password.isBlank()) {
             return error("LOGIN_ERR", "INVALID_CREDENTIALS", "Username and password are required");
         }
@@ -56,20 +56,12 @@ public class LoginHandler {
             }
             String token = tickets.issue(account.id());
             log.info("LOGIN_OK user={} account={}", username, account.id());
-            
-            LoginResponse resp = LoginResponse.builder()
-                .code(ResponseCode.OK)
-                .message("Authenticated")
-                .authToken(token)
-                .accountId(account.id())
-                .build();
+
+            LoginResponse resp = new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id());
             return ProtocolMapper.fromLoginResponse(resp);
         } catch (SQLException e) {
             log.error("LOGIN_ERR user={} reason=db_error", username, e);
-            LoginResponse resp = LoginResponse.builder()
-                .code(ResponseCode.ERROR)
-                .message("Authentication backend unavailable")
-                .build();
+            LoginResponse resp = new LoginResponse(ResponseCode.ERROR, "Authentication backend unavailable", null, -1);
             return ProtocolMapper.fromLoginResponse(resp);
         }
     }

@@ -58,15 +58,15 @@ public class UnauthenticatedState implements ApplicationState {
     private void doLogin() {
         try {
             LoginResponse resp = gateway.login(host, port, panel.getUsername(), panel.getPassword());
-            if (resp.getCode() == ResponseCode.OK) {
-                String authToken  = resp.getAuthToken();
-                String accountId  = Long.toString(resp.getAccountId());
+            if (resp.code() == ResponseCode.OK) {
+                String authToken  = resp.authToken();
+                String accountId  = Long.toString(resp.accountId());
                 debugLog.log("LOGIN_OK account=" + accountId);
                 AuthenticatedState next = authenticatedProvider.get();
                 next.init(host, port, authToken, accountId);
                 stateService.changeState(() -> next);
             } else {
-                debugLog.log("LOGIN_ERR " + resp.getCode() + " " + resp.getMessage());
+                debugLog.log("LOGIN_ERR " + resp.code() + " " + resp.message());
             }
         } catch (Exception e) {
             debugLog.log("LOGIN_ERR " + e.getMessage());

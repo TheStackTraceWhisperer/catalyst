@@ -40,39 +40,32 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     public LoginResponse login(String host, int port, String username, String password) throws IOException {
-        LoginRequest req = LoginRequest.builder()
-            .username(username)
-            .password(password)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromLoginRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromLoginRequest(new LoginRequest(username, password));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toLoginResponse(respFrame);
     }
 
     public CharListResponse listCharacters(String host, int port, String authToken) throws IOException {
-        CharListRequest req = CharListRequest.builder()
-            .authToken(authToken)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromCharListRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromCharListRequest(new CharListRequest(authToken));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toCharListResponse(respFrame);
     }
 
     public List<CharacterSummary> listCharacterSummaries(String host, int port, String authToken) throws IOException {
         CharListResponse resp = listCharacters(host, port, authToken);
-        if (resp.getCode() != ResponseCode.OK) {
-            throw new IOException("CHAR_LIST_ERR " + resp.getCode());
+        if (resp.code() != ResponseCode.OK) {
+            throw new IOException("CHAR_LIST_ERR " + resp.code());
         }
-        List<CharacterSummary> rows = new ArrayList<>(resp.getCharacters().size());
-        for (var c : resp.getCharacters()) {
+        List<CharacterSummary> rows = new ArrayList<>(resp.characters().size());
+        for (var c : resp.characters()) {
             rows.add(new CharacterSummary(
-                c.getId(),
-                c.getName(),
-                c.getRaceName(),
-                c.getSize(),
-                c.getFace(),
-                c.getJobName(),
-                c.getNation()
+                c.id(),
+                c.name(),
+                c.raceName(),
+                c.size(),
+                c.face(),
+                c.jobName(),
+                c.nation()
             ));
         }
         return rows;
@@ -80,17 +73,9 @@ public class QuicGatewayService implements AutoCloseable {
 
     public CharCreateResponse createCharacter(String host, int port, String authToken,
                                          String name, int race, int size, int face, int mainJob, String nation) throws IOException {
-        CharCreateRequest req = CharCreateRequest.builder()
-            .authToken(authToken)
-            .name(name)
-            .race(race)
-            .size(size)
-            .face(face)
-            .mainJob(mainJob)
-            .nation(nation)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromCharCreateRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromCharCreateRequest(
+            new CharCreateRequest(authToken, name, race, size, face, mainJob, nation));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toCharCreateResponse(respFrame);
     }
 
@@ -101,12 +86,8 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        CharSelectRequest req = CharSelectRequest.builder()
-            .authToken(authToken)
-            .characterId(charId)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromCharSelectRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromCharSelectRequest(new CharSelectRequest(authToken, charId));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toCharSelectResponse(respFrame);
     }
 
@@ -117,12 +98,8 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        CharDeleteRequest req = CharDeleteRequest.builder()
-            .authToken(authToken)
-            .characterId(charId)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromCharDeleteRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromCharDeleteRequest(new CharDeleteRequest(authToken, charId));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toCharDeleteResponse(respFrame);
     }
 
@@ -133,30 +110,20 @@ public class QuicGatewayService implements AutoCloseable {
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("Invalid characterId format: " + characterId, e);
         }
-        PlayRequest req = PlayRequest.builder()
-            .authToken(authToken)
-            .characterId(charId)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromPlayRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromPlayRequest(new PlayRequest(authToken, charId));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toPlayResponse(respFrame);
     }
 
     public PingResponse ping(String host, int port, String sessionId) throws IOException {
-        PingRequest req = PingRequest.builder()
-            .sessionId(sessionId)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromPingRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromPingRequest(new PingRequest(sessionId));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toPingResponse(respFrame);
     }
 
     public LogoutResponse logout(String host, int port, String sessionId) throws IOException {
-        LogoutRequest req = LogoutRequest.builder()
-            .sessionId(sessionId)
-            .build();
-        MessageFrame reqFrame = ProtocolMapper.fromLogoutRequest(req);
-        MessageFrame respFrame = gateway.request(host, port, reqFrame.type(), reqFrame.fields());
+        MessageFrame reqFrame = ProtocolMapper.fromLogoutRequest(new LogoutRequest(sessionId));
+        MessageFrame respFrame = gateway.request(host, port, reqFrame);
         return ProtocolMapper.toLogoutResponse(respFrame);
     }
 

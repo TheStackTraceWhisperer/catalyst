@@ -21,14 +21,21 @@ import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 import java.io.IOException;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * Internal QUIC client used by the gateway to forward requests to backend services.
+ *
+ * <p>Supports two request modes:
+ * <ul>
+ *   <li>{@link #request(byte[])} – forward a raw wire buffer verbatim (zero-copy routing)</li>
+ *   <li>{@link #request(MessageFrame)} – encode a frame and forward it</li>
+ * </ul>
+ */
 @Slf4j
 public final class QuicGatewayClient implements AutoCloseable {
     static final String PROTOCOL = "catalyst-1";
@@ -47,10 +54,18 @@ public final class QuicGatewayClient implements AutoCloseable {
         this.port = port;
     }
 
-    public MessageFrame request(String type, Map<String, String> fields) throws IOException {
+    /**
+     * Forwards a pre-encoded (raw binary) wire frame to the backend and returns
+     * the decoded response {@link MessageFrame}. This is the zero-copy path used
+     * by the gateway router.
+     *
+     * @param rawFrame complete wire bytes (opcode + length + Fury payload)
+     * @return decoded response frame
+     */
+    public MessageFrame request(byte[] rawFrame) throws IOException {
         try {
             ensureConnected();
-            return sendOnStream(type, fields);
+            return sendOnStream(rawFrame);
         } catch (IOException e) {
             closeConnection();
             throw e;
@@ -58,6 +73,17 @@ public final class QuicGatewayClient implements AutoCloseable {
             closeConnection();
             throw new IOException("QUIC backend request failed: " + e.getMessage(), e);
         }
+    }
+
+    /**
+     * Encodes the given {@link MessageFrame} and forwards it to the backend.
+     * Convenience method for cases where the caller already holds a decoded frame.
+     *
+     * @param frame the frame to encode and forward
+     * @return decoded response frame
+     */
+    public MessageFrame request(MessageFrame frame) throws IOException {
+        return request(WireCodec.encode(frame));
     }
 
     @Override
@@ -115,7 +141,7 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    private MessageFrame sendOnStream(String type, Map<String, String> fields) throws Exception {
+    private MessageFrame sendOnStream(byte[] rawFrame) throws Exception {
         CompletableFuture<MessageFrame> future = new CompletableFuture<>();
         ResponseStreamHandler handler = new ResponseStreamHandler(future);
 
@@ -123,15 +149,14 @@ public final class QuicGatewayClient implements AutoCloseable {
             .sync()
             .getNow();
 
-        String encoded = WireCodec.encode(type, fields) + "\n";
-        stream.writeAndFlush(Unpooled.copiedBuffer(encoded, StandardCharsets.UTF_8))
+        stream.writeAndFlush(Unpooled.wrappedBuffer(rawFrame))
             .addListener(f -> stream.shutdownOutput());
 
         try {
             return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             stream.close();
-            throw new IOException("Request timed out to backend: " + type);
+            throw new IOException("Request timed out to backend");
         }
     }
 
@@ -163,9 +188,12 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
+    // ── Response stream handler ───────────────────────────────────────────────
+
     private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
         private final CompletableFuture<MessageFrame> future;
-        private final StringBuilder buffer = new StringBuilder();
+        /** Accumulates raw bytes until we have a full framed response. */
+        private byte[] buffer = new byte[0];
 
         ResponseStreamHandler(CompletableFuture<MessageFrame> future) {
             this.future = future;
@@ -175,39 +203,42 @@ public final class QuicGatewayClient implements AutoCloseable {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf buf = (ByteBuf) msg;
             try {
-                buffer.append(buf.toString(StandardCharsets.UTF_8));
+                int readable = buf.readableBytes();
+                byte[] chunk = new byte[readable];
+                buf.readBytes(chunk);
+                buffer = concat(buffer, chunk);
             } finally {
                 buf.release();
             }
-            int newlineIdx = buffer.indexOf("\n");
-            if (newlineIdx >= 0 && !future.isDone()) {
-                String line = buffer.substring(0, newlineIdx).trim();
-                if (!line.isBlank()) {
-                    try {
-                        future.complete(WireCodec.decode(line));
-                    } catch (Exception e) {
-                        future.completeExceptionally(e);
-                    }
-                } else {
-                    future.completeExceptionally(new IOException("Empty response from backend"));
-                }
-                ctx.close();
-            }
+            tryDecode(ctx);
         }
 
         @Override
         public void channelInactive(ChannelHandlerContext ctx) {
             if (!future.isDone()) {
-                String line = buffer.toString().trim();
-                if (!line.isBlank()) {
-                    try {
-                        future.complete(WireCodec.decode(line));
-                    } catch (Exception e) {
-                        future.completeExceptionally(e);
-                    }
-                } else {
-                    future.completeExceptionally(new IOException("Empty response from backend"));
+                tryDecode(ctx);
+                if (!future.isDone()) {
+                    future.completeExceptionally(new IOException("Stream closed before full response received"));
                 }
+            }
+        }
+
+        private void tryDecode(ChannelHandlerContext ctx) {
+            if (future.isDone()) return;
+            if (buffer.length < WireCodec.PAYLOAD_OFFSET) return;
+            int totalLen;
+            try {
+                totalLen = WireCodec.framedLength(buffer);
+            } catch (IllegalArgumentException e) {
+                return; // not enough bytes yet for the length field
+            }
+            if (buffer.length < totalLen) return;
+
+            try {
+                future.complete(WireCodec.decode(buffer));
+                ctx.close();
+            } catch (Exception e) {
+                future.completeExceptionally(e);
             }
         }
 
@@ -215,6 +246,13 @@ public final class QuicGatewayClient implements AutoCloseable {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             future.completeExceptionally(cause);
             ctx.close();
+        }
+
+        private static byte[] concat(byte[] a, byte[] b) {
+            byte[] result = new byte[a.length + b.length];
+            System.arraycopy(a, 0, result, 0, a.length);
+            System.arraycopy(b, 0, result, a.length, b.length);
+            return result;
         }
     }
 }

@@ -81,11 +81,11 @@ public class AuthenticatedState implements ApplicationState {
     private void doSelect(String charId) {
         try {
             CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
-            if (resp.getCode() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
-            String charName = resp.getCharacterName();
+            if (resp.code() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.code()); return; }
+            String charName = resp.characterName();
             panel.setSelectedCharacter(charId, charName);
             CharacterSelectedState next = selectedProvider.get();
-            next.init(host, port, authToken, accountId, charId, charName, resp.getCurrentZoneId());
+            next.init(host, port, authToken, accountId, charId, charName, resp.currentZoneId());
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("CHAR_SELECT_ERR " + e.getMessage()); }
     }
@@ -93,11 +93,11 @@ public class AuthenticatedState implements ApplicationState {
     private void doDelete(String charId) {
         try {
             CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
-            if (resp.getCode() == ResponseCode.OK) { 
+            if (resp.code() == ResponseCode.OK) { 
                 debugLog.log("CHAR_DELETE_OK id=" + charId); 
                 refreshCharacters(); 
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + resp.getCode());
+                debugLog.log("CHAR_DELETE_ERR " + resp.code());
             }
         } catch (Exception e) { debugLog.log("CHAR_DELETE_ERR " + e.getMessage()); }
     }
@@ -107,12 +107,12 @@ public class AuthenticatedState implements ApplicationState {
             CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if (resp.getCode() == ResponseCode.OK) {
-                debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
+            if (resp.code() == ResponseCode.OK) {
+                debugLog.log("CHAR_CREATE_OK id=" + resp.characterId() + " name=" + resp.name());
                 panel.hideCreateForm();
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + resp.getCode() + " " + resp.getMessage());
+                debugLog.log("CHAR_CREATE_ERR " + resp.code() + " " + resp.message());
             }
         } catch (Exception e) { debugLog.log("CHAR_CREATE_ERR " + e.getMessage()); }
     }

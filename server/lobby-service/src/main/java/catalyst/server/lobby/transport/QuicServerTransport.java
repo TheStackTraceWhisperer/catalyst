@@ -8,7 +8,6 @@ import io.netty.buffer.ByteBuf;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
-
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
@@ -24,7 +23,6 @@ import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.concurrent.Future;
 import java.net.InetSocketAddress;
-import java.nio.charset.StandardCharsets;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import jakarta.inject.Singleton;
@@ -103,10 +101,10 @@ public final class QuicServerTransport {
         }
     }
 
-    
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
-        private Function<MessageFrame, MessageFrame> dispatcher = req -> MessageFrame.builder("ERROR").put("code","NOT_READY").put("message","Dispatcher not set").build();
-        private final StringBuilder lineBuffer = new StringBuilder();
+        private final Function<MessageFrame, MessageFrame> dispatcher;
+        /** Byte accumulation buffer for framed binary messages. */
+        private byte[] frameBuffer = new byte[0];
 
         RequestHandler(Function<MessageFrame, MessageFrame> dispatcher) {
             this.dispatcher = dispatcher;
@@ -116,18 +114,28 @@ public final class QuicServerTransport {
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
             ByteBuf buf = (ByteBuf) msg;
             try {
-                lineBuffer.append(buf.toString(StandardCharsets.UTF_8));
-                int newline;
-                while ((newline = lineBuffer.indexOf("\n")) >= 0) {
-                    String line = lineBuffer.substring(0, newline).trim();
-                    lineBuffer.delete(0, newline + 1);
-                    if (line.isBlank()) {
-                        continue;
-                    }
-                    MessageFrame request = WireCodec.decode(line);
+                int readable = buf.readableBytes();
+                byte[] chunk = new byte[readable];
+                buf.readBytes(chunk);
+                frameBuffer = concat(frameBuffer, chunk);
+
+                while (true) {
+                    if (frameBuffer.length < WireCodec.PAYLOAD_OFFSET) break;
+                    int totalLen = WireCodec.framedLength(frameBuffer);
+                    if (frameBuffer.length < totalLen) break;
+
+                    byte[] frame = new byte[totalLen];
+                    System.arraycopy(frameBuffer, 0, frame, 0, totalLen);
+
+                    int remaining = frameBuffer.length - totalLen;
+                    byte[] newBuf = new byte[remaining];
+                    System.arraycopy(frameBuffer, totalLen, newBuf, 0, remaining);
+                    frameBuffer = newBuf;
+
+                    MessageFrame request = WireCodec.decode(frame);
                     MessageFrame response = dispatcher.apply(request);
-                    String encoded = WireCodec.encode(response.type(), response.fields()) + "\n";
-                    ByteBuf out = Unpooled.copiedBuffer(encoded, StandardCharsets.UTF_8);
+                    byte[] encoded = WireCodec.encode(response);
+                    ByteBuf out = Unpooled.wrappedBuffer(encoded);
                     ctx.writeAndFlush(out).addListener((Future<Void> f) -> {
                         ((QuicStreamChannel) ctx.channel()).shutdownOutput();
                     });
@@ -141,6 +149,13 @@ public final class QuicServerTransport {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             log.warn("QUIC stream error", cause);
             ctx.close();
+        }
+
+        private static byte[] concat(byte[] a, byte[] b) {
+            byte[] result = new byte[a.length + b.length];
+            System.arraycopy(a, 0, result, 0, a.length);
+            System.arraycopy(b, 0, result, a.length, b.length);
+            return result;
         }
     }
 }

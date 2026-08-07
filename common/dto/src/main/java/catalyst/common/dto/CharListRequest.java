@@ -1,10 +1,5 @@
 package catalyst.common.dto;
 
-import lombok.Builder;
-import lombok.Value;
-
-@Value
-@Builder
-public class CharListRequest {
-    String authToken;
-}
+public record CharListRequest(
+    String authToken
+) {}

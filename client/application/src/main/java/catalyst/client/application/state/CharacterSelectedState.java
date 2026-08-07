@@ -85,10 +85,10 @@ public class CharacterSelectedState implements ApplicationState {
     private void doSelect(String charId) {
         try {
             CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
-            if (resp.getCode() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.getCode()); return; }
+            if (resp.code() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.code()); return; }
             characterId = charId;
-            characterName = resp.getCharacterName();
-            currentZoneId = resp.getCurrentZoneId();
+            characterName = resp.characterName();
+            currentZoneId = resp.currentZoneId();
             panel.setSelectedCharacter(characterId, characterName);
             updateSelectedStatus();
             debugLog.log("CHAR_SELECT_OK " + characterName + " zone=" + currentZoneId);
@@ -100,11 +100,11 @@ public class CharacterSelectedState implements ApplicationState {
     private void doDelete(String charId) {
         try {
             CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
-            if (resp.getCode() == ResponseCode.OK) {
+            if (resp.code() == ResponseCode.OK) {
                 debugLog.log("CHAR_DELETE_OK id=" + charId);
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + resp.getCode());
+                debugLog.log("CHAR_DELETE_ERR " + resp.code());
             }
         } catch (Exception e) {
             debugLog.log("CHAR_DELETE_ERR " + e.getMessage());
@@ -116,12 +116,12 @@ public class CharacterSelectedState implements ApplicationState {
             CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
                 panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
                 Integer.toString(panel.getNationId()));
-            if (resp.getCode() == ResponseCode.OK) {
-                debugLog.log("CHAR_CREATE_OK id=" + resp.getCharacterId() + " name=" + resp.getName());
+            if (resp.code() == ResponseCode.OK) {
+                debugLog.log("CHAR_CREATE_OK id=" + resp.characterId() + " name=" + resp.name());
                 panel.hideCreateForm();
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + resp.getCode() + " " + resp.getMessage());
+                debugLog.log("CHAR_CREATE_ERR " + resp.code() + " " + resp.message());
             }
         } catch (Exception e) {
             debugLog.log("CHAR_CREATE_ERR " + e.getMessage());
@@ -135,11 +135,11 @@ public class CharacterSelectedState implements ApplicationState {
     private void doPlay() {
         try {
             PlayResponse resp = gateway.play(host, port, authToken, characterId);
-            if (resp.getCode() != ResponseCode.OK) { debugLog.log("PLAY_ERR " + resp.getCode()); return; }
-            String sessionId = resp.getSessionId();
-            int zoneId = resp.getZoneId();
-            int pop    = resp.getPlayersInZone();
-            long keepaliveIntervalMs = resp.getKeepaliveIntervalMs();
+            if (resp.code() != ResponseCode.OK) { debugLog.log("PLAY_ERR " + resp.code()); return; }
+            String sessionId = resp.sessionId();
+            int zoneId = resp.zoneId();
+            int pop    = resp.playersInZone();
+            long keepaliveIntervalMs = resp.keepaliveIntervalMs();
             debugLog.log("PLAY_OK session=" + sessionId + " zone=" + zoneId + " players=" + pop);
             InGameState next = inGameProvider.get();
             next.init(host, port, authToken, accountId, sessionId, characterId, characterName, zoneId, keepaliveIntervalMs);

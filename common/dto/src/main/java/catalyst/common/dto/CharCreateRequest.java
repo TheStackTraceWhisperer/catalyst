@@ -1,16 +1,11 @@
 package catalyst.common.dto;
 
-import lombok.Builder;
-import lombok.Value;
-
-@Value
-@Builder
-public class CharCreateRequest {
-    String authToken;
-    String name;
-    int race;
-    int size;
-    int face;
-    int mainJob;
-    String nation;
-}
+public record CharCreateRequest(
+    String authToken,
+    String name,
+    int race,
+    int size,
+    int face,
+    int mainJob,
+    String nation
+) {}

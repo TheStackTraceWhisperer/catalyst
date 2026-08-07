@@ -1,11 +1,6 @@
 package catalyst.common.dto;
 
-import lombok.Builder;
-import lombok.Value;
-
-@Value
-@Builder
-public class CharDeleteRequest {
-    String authToken;
-    long characterId;
-}
+public record CharDeleteRequest(
+    String authToken,
+    long characterId
+) {}

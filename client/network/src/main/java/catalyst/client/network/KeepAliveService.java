@@ -89,14 +89,14 @@ public class KeepAliveService {
         try {
             PingResponse resp = gateway.ping(host, port, sessionId);
             long rtt = System.currentTimeMillis() - t0;
-            if (resp.getCode() == ResponseCode.OK) {
+            if (resp.code() == ResponseCode.OK) {
                 status = "ok";
                 lastRttMs = rtt;
                 lastOkAt = Instant.now();
                 log.debug("PONG session={} rtt={}ms", sessionId, rtt);
             } else {
-                status = resp.getCode() != null ? resp.getCode().name() : "error";
-                log.warn("PING_ERR code={}", resp.getCode());
+                status = resp.code() != null ? resp.code().name() : "error";
+                log.warn("PING_ERR code={}", resp.code());
             }
         } catch (Exception e) {
             status = "failed";

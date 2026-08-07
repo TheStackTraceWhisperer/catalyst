@@ -2,6 +2,10 @@
 
 This document provides a comprehensive review of the Catalyst-Java project's goals, current status, verified capabilities, and strategic next steps.
 
+
+> [!NOTE]
+> For the design specification, DTO-agnostic framing, and stateful gateway routing decisions, see [ADR 0001: Stateful Gateway Routing & Apache Fory Serialization](file:///home/samuel/projects/ffxi-java/docs/adr/0001-network-architecture-and-gateway-routing.md).
+
 ---
 
 ## 1. Project Objectives & Vision

@@ -2,6 +2,10 @@
 
 This document outlines the current state of the Catalyst network architecture after the successful migration to Apache Fory (Fury) serialization and the implementation of stateful gateway routing, and maps out the next steps for implementing the **Phase 2.5 Concurrency Dispatcher**.
 
+
+> [!NOTE]
+> For the design specification, DTO-agnostic framing, and stateful gateway routing decisions, see [ADR 0001: Stateful Gateway Routing & Apache Fory Serialization](file:///home/samuel/projects/ffxi-java/docs/adr/0001-network-architecture-and-gateway-routing.md).
+
 ---
 
 ## 🟢 Current State: Stateless Gateway & Fory Serialization

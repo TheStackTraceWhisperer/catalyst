@@ -6,6 +6,10 @@ This document describes the complete network architecture for the Catalyst Java 
 
 This project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
 
+
+> [!NOTE]
+> For the design specification, DTO-agnostic framing, and stateful gateway routing decisions, see [ADR 0001: Stateful Gateway Routing & Apache Fory Serialization](file:///home/samuel/projects/ffxi-java/docs/adr/0001-network-architecture-and-gateway-routing.md).
+
 ---
 
 ## 1. Production Topology

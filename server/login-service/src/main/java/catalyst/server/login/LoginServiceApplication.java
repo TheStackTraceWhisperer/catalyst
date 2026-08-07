@@ -17,6 +17,10 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 
+import catalyst.common.network.GatewayControlMessage;
+import catalyst.common.network.ResponseCode;
+import catalyst.common.dto.LoginResponse;
+
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
@@ -39,7 +43,16 @@ public class LoginServiceApplication {
         schedulePeriodicPruning();
 
         ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.register(LoginRequest.class, loginHandler::handle);
+        dispatcher.register(LoginRequest.class, req -> {
+            LoginResponse resp = loginHandler.handle(req);
+            if (resp.code() == ResponseCode.OK) {
+                return new Object[] {
+                    new GatewayControlMessage("auth_success", resp.authToken(), null),
+                    resp
+                };
+            }
+            return resp;
+        });
 
         transport.setDispatcher(dispatcher::dispatch);
         try {

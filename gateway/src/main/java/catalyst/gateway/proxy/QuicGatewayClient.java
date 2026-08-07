@@ -45,14 +45,14 @@ public final class QuicGatewayClient implements AutoCloseable {
     }
 
     /** Sends a GatewayFrame request asynchronously and returns a CompletableFuture containing the response. */
-    public CompletableFuture<GatewayFrame> requestAsync(GatewayFrame frame) {
+    public CompletableFuture<GatewayFrame> requestAsync(GatewayFrame frame, java.util.function.Consumer<catalyst.common.network.GatewayControlMessage> controlCallback) {
         CompletableFuture<GatewayFrame> future = new CompletableFuture<>();
         
         // Use a virtual thread to handle connection handshakes to avoid blocking Netty EventLoop
         Thread.ofVirtual().start(() -> {
             try {
                 ensureConnected();
-                sendOnStreamAsync(frame, future);
+                sendOnStreamAsync(frame, future, controlCallback);
             } catch (Exception e) {
                 closeConnection();
                 future.completeExceptionally(new IOException("QUIC backend request failed: " + e.getMessage(), e));
@@ -124,7 +124,7 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    private void sendOnStreamAsync(GatewayFrame outbound, CompletableFuture<GatewayFrame> future) {
+    private void sendOnStreamAsync(GatewayFrame outbound, CompletableFuture<GatewayFrame> future, java.util.function.Consumer<catalyst.common.network.GatewayControlMessage> controlCallback) {
         quicChannel.createStream(
                 QuicStreamType.BIDIRECTIONAL,
                 new ChannelInitializer<QuicStreamChannel>() {
@@ -133,7 +133,7 @@ public final class QuicGatewayClient implements AutoCloseable {
                         ch.pipeline()
                             .addLast(new GatewayFrameDecoder())
                             .addLast(new GatewayFrameEncoder())
-                            .addLast(new ResponseStreamHandler(future));
+                            .addLast(new ResponseStreamHandler(future, controlCallback));
                     }
                 })
             .addListener(f -> {

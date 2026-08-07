@@ -25,13 +25,4 @@ public record PlayResponse(
     public byte gatewayFlag() {
         return GatewayFrame.FLAG_LOBBY;
     }
-
-    @Override
-    public String gatewayMetadata() {
-        if (code == ResponseCode.OK) {
-            String sid = sessionId != null ? sessionId : "";
-            return "status=play_success;worldAddress=DEFAULT;sessionId=" + sid;
-        }
-        return "";
-    }
 }

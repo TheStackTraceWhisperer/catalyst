@@ -15,9 +15,4 @@ public record LoginResponse(
     public byte gatewayFlag() {
         return GatewayFrame.FLAG_LOGIN;
     }
-
-    @Override
-    public String gatewayMetadata() {
-        return code == ResponseCode.OK ? "status=auth_success" : "";
-    }
 }

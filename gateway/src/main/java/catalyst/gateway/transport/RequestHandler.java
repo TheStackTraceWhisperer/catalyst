@@ -1,5 +1,6 @@
 package catalyst.gateway.transport;
 
+import catalyst.common.network.GatewayControlMessage;
 import catalyst.common.network.GatewayFrame;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.QuicGatewayClient;
@@ -50,13 +51,14 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         }
 
         // Forward request asynchronously to backend client (Zero Blocking on EventLoop)
-        client.requestAsync(requestFrame)
+        client.requestAsync(requestFrame, controlMsg -> {
+            handleStateTransitions(parentChannel, controlMsg);
+        })
             .thenAccept(responseFrame -> {
                 if (responseFrame == null) {
                     sendBackendUnavailable(ctx);
                     return;
                 }
-                handleStateTransitions(parentChannel, responseFrame);
                 ctx.writeAndFlush(responseFrame).addListener(f -> {
                     if (!f.isSuccess()) {
                         log.warn("Failed to write gateway response", f.cause());
@@ -98,21 +100,20 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         return null;
     }
 
-    private void handleStateTransitions(Channel parentChannel, GatewayFrame responseFrame) {
-        String metadata = responseFrame.metadata();
-        String status = getMetadataValue(metadata, "status");
-        if (status == null) {
+    private void handleStateTransitions(Channel parentChannel, GatewayControlMessage gcm) {
+        String command = gcm.command();
+        if (command == null) {
             return;
         }
 
-        switch (status) {
+        switch (command) {
             case "auth_success" -> {
                 log.info("Client authenticated, transitioning to AUTHENTICATED");
                 parentChannel.attr(STATE_KEY).set(ConnectionState.AUTHENTICATED);
             }
             case "play_success" -> {
-                String worldAddr = getMetadataValue(metadata, "worldAddress");
-                String sessionId = getMetadataValue(metadata, "sessionId");
+                String worldAddr = gcm.worldAddress();
+                String sessionId = gcm.sessionId();
                 log.info("Client play success, sessionId={}, transitioning to PLAYING", sessionId);
 
                 parentChannel.attr(STATE_KEY).set(ConnectionState.PLAYING);
@@ -147,20 +148,6 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 parentChannel.attr(WORLD_CLIENT_KEY).set(targetClient);
             }
         }
-    }
-
-    private static String getMetadataValue(String metadata, String key) {
-        if (metadata == null || metadata.isEmpty()) {
-            return null;
-        }
-        String[] parts = metadata.split(";");
-        for (String part : parts) {
-            String[] kv = part.split("=", 2);
-            if (kv.length == 2 && kv[0].trim().equals(key)) {
-                return kv[1].trim();
-            }
-        }
-        return null;
     }
 
     @Override

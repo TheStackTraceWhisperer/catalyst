@@ -12,6 +12,9 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import catalyst.common.network.GatewayControlMessage;
+import catalyst.common.network.ResponseCode;
+
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
@@ -32,7 +35,16 @@ public class LobbyServiceApplication {
         dispatcher.register(CharCreateRequest.class, lobbyHandler::handleCreate);
         dispatcher.register(CharSelectRequest.class, lobbyHandler::handleSelect);
         dispatcher.register(CharDeleteRequest.class, lobbyHandler::handleDelete);
-        dispatcher.register(PlayRequest.class, lobbyHandler::handlePlay);
+        dispatcher.register(PlayRequest.class, req -> {
+            PlayResponse resp = lobbyHandler.handlePlay(req);
+            if (resp.code() == ResponseCode.OK) {
+                return new Object[] {
+                    new GatewayControlMessage("play_success", resp.sessionId(), "DEFAULT"),
+                    resp
+                };
+            }
+            return resp;
+        });
 
         transport.setDispatcher(dispatcher::dispatch);
         try {

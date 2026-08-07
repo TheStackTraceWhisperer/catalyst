@@ -124,10 +124,31 @@ public final class QuicServerTransport {
                 Object response = dispatcher.apply(msg);
                 
                 if (response != null) {
-                    // Response will be encoded by ForyEncoder
-                    ctx.writeAndFlush(response).addListener(f -> {
-                        ((QuicStreamChannel) ctx.channel()).shutdownOutput();
-                    });
+                    if (response instanceof Object[] array) {
+                        if (array.length > 0) {
+                            for (int i = 0; i < array.length - 1; i++) {
+                                ctx.write(array[i]);
+                            }
+                            ctx.writeAndFlush(array[array.length - 1]).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
+                        } else {
+                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                        }
+                    } else if (response instanceof Iterable<?> iterable) {
+                        var list = new java.util.ArrayList<>();
+                        iterable.forEach(list::add);
+                        if (!list.isEmpty()) {
+                            for (int i = 0; i < list.size() - 1; i++) {
+                                ctx.write(list.get(i));
+                            }
+                            ctx.writeAndFlush(list.get(list.size() - 1)).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
+                        } else {
+                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                        }
+                    } else {
+                        ctx.writeAndFlush(response).addListener(f -> {
+                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                        });
+                    }
                 } else {
                     log.warn("Dispatcher returned null for request: {}", msg.getClass().getSimpleName());
                     ctx.close();

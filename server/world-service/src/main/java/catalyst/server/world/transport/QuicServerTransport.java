@@ -36,14 +36,14 @@ public final class QuicServerTransport {
     static final String PROTOCOL = "catalyst-1";
 
     private final ServerProperties props;
-    private Function<Object, Object> dispatcher = req -> {
+    private Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher = req -> {
         log.error("Dispatcher not set for request: {}", req.getClass().getSimpleName());
-        return null;
+        return java.util.concurrent.CompletableFuture.completedFuture(null);
     };
     private EventLoopGroup group;
     private Channel bindChannel;
 
-    public void setDispatcher(Function<Object, Object> dispatcher) {
+    public void setDispatcher(Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher) {
         this.dispatcher = dispatcher;
     }
 
@@ -109,9 +109,9 @@ public final class QuicServerTransport {
     }
 
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
-        private final Function<Object, Object> dispatcher;
+        private final Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher;
 
-        RequestHandler(Function<Object, Object> dispatcher) {
+        RequestHandler(Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher) {
             this.dispatcher = dispatcher;
         }
 
@@ -121,40 +121,46 @@ public final class QuicServerTransport {
                 // msg is already a decoded domain object (e.g., LoginRequest)
                 log.debug("Received request: {}", msg.getClass().getSimpleName());
                 
-                Object response = dispatcher.apply(msg);
-                
-                if (response != null) {
-                    if (response instanceof Object[] array) {
-                        if (array.length > 0) {
-                            for (int i = 0; i < array.length - 1; i++) {
-                                ctx.write(array[i]);
+                dispatcher.apply(msg)
+                    .thenAccept(response -> {
+                        if (response != null) {
+                            if (response instanceof Object[] array) {
+                                if (array.length > 0) {
+                                    for (int i = 0; i < array.length - 1; i++) {
+                                        ctx.write(array[i]);
+                                    }
+                                    ctx.writeAndFlush(array[array.length - 1]).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
+                                } else {
+                                    ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                                }
+                            } else if (response instanceof Iterable<?> iterable) {
+                                var list = new java.util.ArrayList<>();
+                                iterable.forEach(list::add);
+                                if (!list.isEmpty()) {
+                                    for (int i = 0; i < list.size() - 1; i++) {
+                                        ctx.write(list.get(i));
+                                    }
+                                    ctx.writeAndFlush(list.get(list.size() - 1)).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
+                                } else {
+                                    ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                                }
+                            } else {
+                                ctx.writeAndFlush(response).addListener(f -> {
+                                    ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                                });
                             }
-                            ctx.writeAndFlush(array[array.length - 1]).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
                         } else {
-                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
+                            log.warn("Dispatcher returned null for request: {}", msg.getClass().getSimpleName());
+                            ctx.close();
                         }
-                    } else if (response instanceof Iterable<?> iterable) {
-                        var list = new java.util.ArrayList<>();
-                        iterable.forEach(list::add);
-                        if (!list.isEmpty()) {
-                            for (int i = 0; i < list.size() - 1; i++) {
-                                ctx.write(list.get(i));
-                            }
-                            ctx.writeAndFlush(list.get(list.size() - 1)).addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
-                        } else {
-                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
-                        }
-                    } else {
-                        ctx.writeAndFlush(response).addListener(f -> {
-                            ((QuicStreamChannel) ctx.channel()).shutdownOutput();
-                        });
-                    }
-                } else {
-                    log.warn("Dispatcher returned null for request: {}", msg.getClass().getSimpleName());
-                    ctx.close();
-                }
+                    })
+                    .exceptionally(ex -> {
+                        log.error("Error processing request asynchronously: {}", msg.getClass().getSimpleName(), ex);
+                        ctx.close();
+                        return null;
+                    });
             } catch (Exception e) {
-                log.error("Error processing request: {}", msg.getClass().getSimpleName(), e);
+                log.error("Error submitting request to dispatcher: {}", msg.getClass().getSimpleName(), e);
                 ctx.close();
             }
         }

@@ -12,6 +12,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
+import catalyst.common.network.StatelessMessageDispatcher;
+
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
@@ -21,16 +23,16 @@ public class LobbyServiceApplication {
     private final List<PacketHandler<?>> packetHandlers;
     private final ServerProperties props;
 
+    private StatelessMessageDispatcher dispatcher;
+
     public static void main(String[] args) {
         Micronaut.run(LobbyServiceApplication.class, args);
     }
 
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
-        ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.registerAll(packetHandlers);
-
-        transport.setDispatcher(dispatcher::dispatch);
+        dispatcher = new StatelessMessageDispatcher(packetHandlers);
+        transport.setDispatcher(dispatcher::dispatchAsync);
         try {
             transport.start();
             log.info("Lobby Service listening on UDP port {} (QUIC)", props.getPort());
@@ -43,5 +45,8 @@ public class LobbyServiceApplication {
     public void onShutdown() {
         log.info("Stopping Lobby Service transport...");
         transport.stop();
+        if (dispatcher != null) {
+            dispatcher.close();
+        }
     }
 }

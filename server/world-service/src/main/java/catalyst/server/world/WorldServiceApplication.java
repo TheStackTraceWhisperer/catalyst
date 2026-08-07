@@ -37,7 +37,7 @@ public class WorldServiceApplication {
         ObjectDispatcher dispatcher = new ObjectDispatcher();
         dispatcher.registerAll(packetHandlers);
 
-        transport.setDispatcher(dispatcher::dispatch);
+        transport.setDispatcher(req -> java.util.concurrent.CompletableFuture.completedFuture(dispatcher.dispatch(req)));
         try {
             transport.start();
             log.info("World Service listening on UDP port {} (QUIC)", props.getPort());

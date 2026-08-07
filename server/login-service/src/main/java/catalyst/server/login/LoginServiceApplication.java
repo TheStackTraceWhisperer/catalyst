@@ -17,6 +17,8 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 
+import catalyst.common.network.StatelessMessageDispatcher;
+
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
@@ -29,6 +31,8 @@ public class LoginServiceApplication {
     private final DataSource dataSource;
     private final TaskScheduler scheduler;
 
+    private StatelessMessageDispatcher dispatcher;
+
     public static void main(String[] args) {
         Micronaut.run(LoginServiceApplication.class, args);
     }
@@ -39,10 +43,8 @@ public class LoginServiceApplication {
         loginHandler.bootstrapDevAccount();
         schedulePeriodicPruning();
 
-        ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.registerAll(packetHandlers);
-
-        transport.setDispatcher(dispatcher::dispatch);
+        dispatcher = new StatelessMessageDispatcher(packetHandlers);
+        transport.setDispatcher(dispatcher::dispatchAsync);
         try {
             transport.start();
             log.info("Login Service listening on UDP port {} (QUIC)", props.getPort());
@@ -55,6 +57,9 @@ public class LoginServiceApplication {
     public void onShutdown() {
         log.info("Stopping Login Service transport...");
         transport.stop();
+        if (dispatcher != null) {
+            dispatcher.close();
+        }
     }
 
     private void schedulePeriodicPruning() {

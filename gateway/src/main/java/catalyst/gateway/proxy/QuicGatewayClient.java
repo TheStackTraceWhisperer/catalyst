@@ -175,37 +175,4 @@ public final class QuicGatewayClient implements AutoCloseable {
             Thread.currentThread().interrupt();
         }
     }
-
-    private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
-        private final CompletableFuture<GatewayFrame> future;
-
-        ResponseStreamHandler(CompletableFuture<GatewayFrame> future) {
-            this.future = future;
-        }
-
-        @Override
-        public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            if (msg instanceof GatewayFrame frame) {
-                if (future.complete(frame)) {
-                    ctx.close();
-                }
-            } else {
-                future.completeExceptionally(new IllegalArgumentException("Expected GatewayFrame but got: " + msg.getClass().getName()));
-                ctx.close();
-            }
-        }
-
-        @Override
-        public void channelInactive(ChannelHandlerContext ctx) {
-            if (!future.isDone()) {
-                future.completeExceptionally(new IOException("Stream closed before response received"));
-            }
-        }
-
-        @Override
-        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
-            future.completeExceptionally(cause);
-            ctx.close();
-        }
-    }
 }

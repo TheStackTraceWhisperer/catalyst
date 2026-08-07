@@ -7,14 +7,12 @@ import jakarta.inject.Singleton;
 import org.reactivestreams.Publisher;
 import io.micronaut.core.async.publisher.Publishers;
 import io.micronaut.health.HealthStatus;
+import lombok.RequiredArgsConstructor;
 
+@RequiredArgsConstructor
 @Singleton
 public class QuicHealthIndicator implements HealthIndicator {
     private final QuicServerTransport transport;
-
-    public QuicHealthIndicator(QuicServerTransport transport) {
-        this.transport = transport;
-    }
 
     @Override
     public Publisher<HealthResult> getResult() {

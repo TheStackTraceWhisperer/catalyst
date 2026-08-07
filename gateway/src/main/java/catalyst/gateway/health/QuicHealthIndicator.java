@@ -9,13 +9,12 @@ import io.micronaut.core.async.publisher.Publishers;
 
 import io.micronaut.health.HealthStatus;
 
+import lombok.RequiredArgsConstructor;
+
+@RequiredArgsConstructor
 @Singleton
 public class QuicHealthIndicator implements HealthIndicator {
     private final GatewayServer server;
-
-    public QuicHealthIndicator(GatewayServer server) {
-        this.server = server;
-    }
 
     @Override
     public Publisher<HealthResult> getResult() {

@@ -4,6 +4,7 @@ import catalyst.common.network.MessageFrame;
 import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.*;
 import jakarta.inject.Singleton;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -160,6 +161,7 @@ public class QuicGatewayService implements AutoCloseable {
     }
 
     @Override
+    @PreDestroy
     public void close() {
         gateway.close();
     }

@@ -1,6 +1,7 @@
 package catalyst.common.concurrency;
 
 import jakarta.inject.Singleton;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Queue;
@@ -9,7 +10,7 @@ import java.util.function.Consumer;
 
 @Slf4j
 @Singleton
-public class TaskSchedulerService implements TaskScheduler {
+public class TaskSchedulerService implements TaskScheduler, AutoCloseable {
 
     private final ExecutorService backgroundExecutor = Executors.newVirtualThreadPerTaskExecutor();
     private final ScheduledExecutorService schedulerWatchdog = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -23,6 +24,7 @@ public class TaskSchedulerService implements TaskScheduler {
         log.info("TaskSchedulerService started with virtual thread background executor.");
     }
 
+    @PreDestroy
     public void stop() {
         log.info("Shutting down TaskSchedulerService...");
         backgroundExecutor.shutdown();
@@ -40,6 +42,11 @@ public class TaskSchedulerService implements TaskScheduler {
             Thread.currentThread().interrupt();
         }
         log.info("TaskSchedulerService shut down successfully.");
+    }
+
+    @Override
+    public void close() {
+        stop();
     }
 
     @Override

@@ -1,54 +1,61 @@
 # Catalyst MMO: Protocol Conversion & Phase 2.5 Dispatcher Assessment
 
-We have analyzed the current codebase after the conversion to the Fory (Fury) serialization protocol and reviewed it against the blueprint defined in [`phase-2.5-concurrency-dispatcher.md`](file:///home/samuel/projects/ffxi-java/docs/architecture/phase-2.5-concurrency-dispatcher.md).
+This document outlines the current state of the Catalyst network architecture after the successful migration to Apache Fory (Fury) serialization and the implementation of stateful gateway routing, and maps out the next steps for implementing the **Phase 2.5 Concurrency Dispatcher**.
 
 ---
 
-## 🔍 The Situation: Why the Protocol Migration Stopped Here
+## 🟢 Current State: Stateless Gateway & Fory Serialization
 
-The Fory protocol migration successfully eliminated the old untyped `MessageFrame`/`WireCodec` stack, replacing it with type-safe Java records (`LoginRequest`, `PlayResponse`, etc.). 
-
-However, to keep the migration compile-safe and runnable, the implementation stopped at a **temporary bridge phase**:
-1. **Retained Monolithic Handlers:** The codebase currently keeps the old monolithic handler classes (`LoginHandler`, `LobbyHandler`, `WorldHandler`) and their synchronous methods.
-2. **Introduced `ObjectDispatcher`:** A temporary `ObjectDispatcher` class was added to `common/network` to register these handler methods (e.g., `lobbyHandler::handleList`) and route them synchronously on Netty's thread.
-3. **Did Not Implement Concurrent/Tick Loops Yet:** The virtual-thread-per-task executor (`StatelessMessageDispatcher`) and the 10Hz tick-loop executor (`ZoneMessageDispatcher`) described in Phase 2.5 were not introduced.
-
-Stopping here was a logical intermediate step to ensure the new network codec was fully functional (passing the `E2EValidationHarness` tests) before executing the major architectural refactoring required for the concurrency dispatcher.
+We have resolved all critical gateway design issues identified in the initial review:
+1. **DTO-Agnostic Routing:** The gateway is now completely decoupled from application DTOs and reflection. It routes messages purely at the transport level using [`GatewayFrame`](file:///home/samuel/projects/ffxi-java/common/network/src/main/java/catalyst/common/network/GatewayFrame.java).
+2. **Stateful Connection Management:** The gateway tracks the state of each client connection in-memory (`UNAUTHENTICATED` -> `AUTHENTICATED` -> `PLAYING`). This prevents unauthorized routing requests and eliminates the need to inspect payloads for `sessionId` keys.
+3. **No Performance Hacks:** Removed `RawFrameCaptureHandler` and the manual byte-copying/accumulation arrays (`PENDING_FRAMES`), ensuring that transport bytes flow efficiently through Netty's native pipeline.
+4. **Fory Symmetrical Codec:** `ForyDecoder` and `ForyEncoder` now extend Netty's message-to-message codecs, sitting cleanly on top of `GatewayFrame` to decode and encode application objects.
 
 ---
 
-## ⚠️ Architectural Divergences & Code Quality Concerns
+## 🚧 Upcoming Phase: Concurrency & Database Dispatching (Phase 2.5)
 
-To align the current state with the target architecture, we must address the following discrepancies:
+Now that the transport framing and gateway architecture are clean, we must address the remaining concurrency bottlenecks in the backend microservices.
 
-### 1. Packet Dispatcher Leakage (`ObjectDispatcher` in `common`)
-* **Divergence:** The blueprint states that the shared server infrastructure (`server-common`) contains the dispatching contracts and that they **do not** leak into the `client` or `common/network` modules. 
-* **Current State:** `ObjectDispatcher` and `RoutingContext` are placed in the `common/network` module, exposing server-only routing details to the client.
+### The Problem: Blocking Netty Event Loop Threads
+Currently, the backend server transports (`QuicServerTransport` in Login, Lobby, and World Services) process incoming requests synchronously on the Netty EventLoop thread. 
+* Handlers like `LobbyHandler` and `LoginHandler` perform synchronous JDBC database queries and heavy crypto operations (Argon2id).
+* Executing these blocking calls directly on the EventLoop thread blocks Netty from reading/writing packets, resulting in severe packet loss and connection drops under load.
 
-### 2. Manual Method Wiring vs. Dependency Injection (DI)
-* **Divergence:** The blueprint calls for an open/closed design where new features are added by creating a class implementing `PacketHandler<T>`. The dispatchers (`StatelessMessageDispatcher` / `ZoneMessageDispatcher`) automatically discover and register these beans via Micronaut's dependency injection container (`BeanProvider<PacketHandler<?>>`).
-* **Current State:** The handlers are manual method references registered inside the main application startup classes, which is prone to circular dependency errors and makes testing harder.
+### The Solution: The Offload Pattern
+We will implement the dispatching model defined in the [Phase 2.5 Concurrency Dispatcher Blueprint](file:///home/samuel/projects/ffxi-java/docs/architecture/phase-2.5-concurrency-dispatcher.md).
 
-### 3. Duplicate Framing in the Gateway
-* **Concern:** To avoid re-serializing messages, the `GatewayServer` uses `RawFrameCaptureHandler` to capture raw bytes, while `ForyDecoder` separately deserializes the same byte stream to extract session keys. 
-* **Improvement:** This can be unified into a single decoder pass that yields a compound message holder containing the routing key, the decoded object, and the raw byte array, removing the array copying in `RawFrameCaptureHandler`.
+```mermaid
+graph TD
+    Client[Client Connection] -->|GatewayFrame| GW[Gateway Server]
+    GW -->|GatewayFrame| Netty[Netty EventLoop]
+    Netty -->|Instant Offload| Dispatcher{Dispatcher}
+    
+    subgraph Stateless Services (Login/Lobby)
+        Dispatcher -->|Virtual Thread| VT[VT Worker Pool]
+        VT -->|Safe Block| DB[(JDBC PostgreSQL)]
+    end
 
----
+    subgraph Stateful Services (World)
+        Dispatcher -->|Queue| Queue(Zone Queue)
+        Queue -->|Sequential Process| Loop[10Hz Tick Loop]
+    end
+```
 
-## 🗺️ Path Forward: Implementing Phase 2.5
+#### 1. Stateless Dispatching (Login & Lobby Services)
+* **Goal:** Maximize concurrent database lookup speeds.
+* **Mechanism:** Implement `StatelessMessageDispatcher` in `server-common`. Upon receiving a decoded packet, Netty instantly offers it to an internal queue and returns to listening. A virtual-thread-per-task executor (`Executors.newVirtualThreadPerTaskExecutor()`) picks up the command, safely executing blocking database queries off the EventLoop.
 
-With the Fory types fully operational, we are now ready to implement the Phase 2.5 blueprint:
+#### 2. Stateful Dispatching (World Service)
+* **Goal:** Prevent database race conditions (e.g. concurrent looting duplication).
+* **Mechanism:** Implement `ZoneMessageDispatcher` inside `world-service`. Packets are offered to a non-blocking queue and processed sequentially on a single virtual thread running at a **10Hz Tick Rate (100ms interval)**.
 
-1. **Move Infrastructure to `server-common`:**
-   * Create `GameCommand` and `PacketHandler` under `catalyst.server.common.dispatch`.
-   * Implement `StatelessMessageDispatcher` using a Java Virtual Thread executor.
+#### 3. Command/Handler Refactoring
+To support this automated dispatching:
+* Migrate monolithic handlers (`LoginHandler`, `LobbyHandler`, `WorldHandler`) into individual, decoupled strategy classes implementing the `PacketHandler<T>` interface.
+* Use Micronaut dependency injection (`BeanProvider<PacketHandler<?>>`) to automatically register these handlers inside the dispatchers.
 
-2. **Refactor Handlers to `PacketHandler` Beans:**
-   * Split the methods in `LoginHandler`, `LobbyHandler`, and `WorldHandler` into individual handler beans (e.g., `LoginRequestHandler`, `CharListRequestHandler`, `PlayRequestHandler`).
-   * Clean up and delete the temporary `ObjectDispatcher`.
-
-3. **Implement the Zone Tick Loop:**
-   * Implement `ZoneMessageDispatcher` inside `world-service` running at 10Hz to handle spatial sequential actions.
-
-4. **Integrate Non-blocking Client Dispatcher:**
-   * Implement `ClientDispatcher` in the `client/engine` module to route inbound network packets safely to the single-threaded GLFW/ImGui render loop.
+#### 4. Game Client Integration
+* Implement `ClientDispatcher` in `client/engine` to act as an inbox.
+* Inbound packets are enqueued by Netty and polled sequentially by the GLFW/ImGui render loop at 60 FPS, ensuring that network packets do not trigger OpenGL concurrency crashes.

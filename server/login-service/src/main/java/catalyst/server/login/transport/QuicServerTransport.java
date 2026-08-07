@@ -26,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
+import catalyst.common.network.GatewayFrameDecoder;
+import catalyst.common.network.GatewayFrameEncoder;
 
 @Slf4j
 @Singleton
@@ -70,6 +72,8 @@ public final class QuicServerTransport {
                 @Override
                 protected void initChannel(QuicStreamChannel ch) {
                     ch.pipeline()
+                        .addLast(new GatewayFrameDecoder())
+                        .addLast(new GatewayFrameEncoder())
                         .addLast(new ForyDecoder())
                         .addLast(new ForyEncoder())
                         .addLast(new RequestHandler(dispatcher));

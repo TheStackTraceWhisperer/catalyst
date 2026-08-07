@@ -1,9 +1,9 @@
 package catalyst.gateway.proxy;
 
-import catalyst.common.network.ForyDecoder;
-import catalyst.common.network.ForyEncoder;
+import catalyst.common.network.GatewayFrame;
+import catalyst.common.network.GatewayFrameDecoder;
+import catalyst.common.network.GatewayFrameEncoder;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -26,7 +26,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import lombok.extern.slf4j.Slf4j;
 
-/** Internal QUIC client used by the gateway to forward Fory-encoded requests to backends. */
+/** Internal QUIC client used by the gateway to forward GatewayFrame requests to backends. */
 @Slf4j
 public final class QuicGatewayClient implements AutoCloseable {
     public static final String PROTOCOL = "catalyst-1";
@@ -45,25 +45,11 @@ public final class QuicGatewayClient implements AutoCloseable {
         this.port = port;
     }
 
-    /** Sends an already-framed Fory request without re-serializing it. */
-    public Object request(byte[] rawFrame) throws IOException {
+    /** Sends a GatewayFrame request and awaits a GatewayFrame response from the backend. */
+    public GatewayFrame request(GatewayFrame frame) throws IOException {
         try {
             ensureConnected();
-            return sendRawOnStream(rawFrame);
-        } catch (IOException e) {
-            closeConnection();
-            throw e;
-        } catch (Exception e) {
-            closeConnection();
-            throw new IOException("QUIC backend request failed: " + e.getMessage(), e);
-        }
-    }
-
-    /** Serializes and sends a request object through the Fory pipeline. */
-    public Object request(Object request) throws IOException {
-        try {
-            ensureConnected();
-            return sendObjectOnStream(request);
+            return sendOnStream(frame);
         } catch (IOException e) {
             closeConnection();
             throw e;
@@ -128,32 +114,18 @@ public final class QuicGatewayClient implements AutoCloseable {
         }
     }
 
-    private Object sendRawOnStream(byte[] rawFrame) throws Exception {
-        return sendOnStream(
-            stream -> stream.pipeline().addLast(new ForyDecoder()),
-            Unpooled.wrappedBuffer(rawFrame)
-        );
-    }
-
-    private Object sendObjectOnStream(Object request) throws Exception {
-        return sendOnStream(
-            stream -> stream.pipeline()
-                .addLast(new ForyDecoder())
-                .addLast(new ForyEncoder()),
-            request
-        );
-    }
-
-    private Object sendOnStream(StreamPipelineConfigurer pipelineConfigurer, Object outbound) throws Exception {
-        CompletableFuture<Object> future = new CompletableFuture<>();
+    private GatewayFrame sendOnStream(GatewayFrame outbound) throws Exception {
+        CompletableFuture<GatewayFrame> future = new CompletableFuture<>();
 
         QuicStreamChannel stream = quicChannel.createStream(
                 QuicStreamType.BIDIRECTIONAL,
                 new ChannelInitializer<QuicStreamChannel>() {
                     @Override
                     protected void initChannel(QuicStreamChannel ch) {
-                        pipelineConfigurer.configure(ch);
-                        ch.pipeline().addLast(new ResponseStreamHandler(future));
+                        ch.pipeline()
+                            .addLast(new GatewayFrameDecoder())
+                            .addLast(new GatewayFrameEncoder())
+                            .addLast(new ResponseStreamHandler(future));
                     }
                 })
             .sync()
@@ -172,7 +144,7 @@ public final class QuicGatewayClient implements AutoCloseable {
             return future.get(REQUEST_TIMEOUT_MS, TimeUnit.MILLISECONDS);
         } catch (TimeoutException e) {
             stream.close();
-            throw new IOException("Request timed out to backend");
+            throw new IOException("Request timed out to backend " + host + ":" + port);
         }
     }
 
@@ -205,15 +177,20 @@ public final class QuicGatewayClient implements AutoCloseable {
     }
 
     private static final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
-        private final CompletableFuture<Object> future;
+        private final CompletableFuture<GatewayFrame> future;
 
-        ResponseStreamHandler(CompletableFuture<Object> future) {
+        ResponseStreamHandler(CompletableFuture<GatewayFrame> future) {
             this.future = future;
         }
 
         @Override
         public void channelRead(ChannelHandlerContext ctx, Object msg) {
-            if (future.complete(msg)) {
+            if (msg instanceof GatewayFrame frame) {
+                if (future.complete(frame)) {
+                    ctx.close();
+                }
+            } else {
+                future.completeExceptionally(new IllegalArgumentException("Expected GatewayFrame but got: " + msg.getClass().getName()));
                 ctx.close();
             }
         }
@@ -230,10 +207,5 @@ public final class QuicGatewayClient implements AutoCloseable {
             future.completeExceptionally(cause);
             ctx.close();
         }
-    }
-
-    @FunctionalInterface
-    private interface StreamPipelineConfigurer {
-        void configure(QuicStreamChannel stream);
     }
 }

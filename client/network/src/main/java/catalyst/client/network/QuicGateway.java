@@ -2,6 +2,8 @@ package catalyst.client.network;
 
 import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
+import catalyst.common.network.GatewayFrameDecoder;
+import catalyst.common.network.GatewayFrameEncoder;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -106,6 +108,8 @@ final class QuicGateway implements AutoCloseable {
                     @Override
                     protected void initChannel(QuicStreamChannel ch) {
                         ch.pipeline()
+                            .addLast(new GatewayFrameDecoder())
+                            .addLast(new GatewayFrameEncoder())
                             .addLast(new ForyDecoder())
                             .addLast(new ForyEncoder())
                             .addLast(handler);

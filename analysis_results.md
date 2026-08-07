@@ -32,16 +32,14 @@ graph TD
     
     subgraph "Stateless Services (Login / Lobby)"
         GW -->|Login / Lobby Frame| NettyStateless["Netty EventLoop"]
-        NettyStateless -->|Instant Queue| DispStateless["Stateless Dispatcher"]
-        DispStateless -->|Virtual Thread| VT["VT Worker Pool"]
-        VT -->|Safe Block| DB[("JDBC PostgreSQL")]
+        NettyStateless -->|Immediate Offload| VT["Virtual Threads"]
+        VT -->|JDBC DB Call| DB[("JDBC PostgreSQL")]
     end
 
     subgraph "Stateful Services (World)"
         GW -->|World Frame| NettyStateful["Netty EventLoop"]
-        NettyStateful -->|Instant Queue| DispStateful["Zone Dispatcher"]
-        DispStateful -->|Zone Queue| Queue["Zone Queue"]
-        Queue -->|Sequential Process| Loop["10Hz Tick Loop"]
+        NettyStateful -->|Instant Queue| Queue["Zone Queue"]
+        Loop["10Hz Tick Loop"] -->|Poll & Execute| Queue
     end
 ```
 

@@ -58,15 +58,27 @@ spec:
             periodSeconds: 2
             failureThreshold: 5
           env:
-            - name: CATALYST_GATEWAY_LOGINHOST
+            - name: CATALYST_GATEWAY_BACKENDS_LOGIN_HOST
               value: "login-service"
-            - name: CATALYST_GATEWAY_LOGINPORT
+            - name: CATALYST_GATEWAY_BACKENDS_LOGIN_PORT
               value: "35556"
-            - name: CATALYST_GATEWAY_LOBBYHOST
+            - name: CATALYST_GATEWAY_BACKENDS_LOGIN_FLAG
+              value: "1"
+            - name: CATALYST_GATEWAY_BACKENDS_LOGIN_POLICY
+              value: "UNAUTHENTICATED"
+            - name: CATALYST_GATEWAY_BACKENDS_LOBBY_HOST
               value: "lobby-service"
-            - name: CATALYST_GATEWAY_LOBBYPORT
+            - name: CATALYST_GATEWAY_BACKENDS_LOBBY_PORT
               value: "35556"
-            - name: CATALYST_GATEWAY_WORLDHOST
+            - name: CATALYST_GATEWAY_BACKENDS_LOBBY_FLAG
+              value: "2"
+            - name: CATALYST_GATEWAY_BACKENDS_LOBBY_POLICY
+              value: "AUTHENTICATED"
+            - name: CATALYST_GATEWAY_BACKENDS_WORLD_HOST
               value: "world-service"
-            - name: CATALYST_GATEWAY_WORLDPORT
+            - name: CATALYST_GATEWAY_BACKENDS_WORLD_PORT
               value: "35556"
+            - name: CATALYST_GATEWAY_BACKENDS_WORLD_FLAG
+              value: "3"
+            - name: CATALYST_GATEWAY_BACKENDS_WORLD_POLICY
+              value: "SESSION_BOUND"

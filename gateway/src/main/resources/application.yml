@@ -7,6 +7,22 @@ micronaut:
 catalyst:
   gateway:
     port: 35555
+    backends:
+      login:
+        flag: 1
+        policy: UNAUTHENTICATED
+        host: localhost
+        port: 35000
+      lobby:
+        flag: 2
+        policy: AUTHENTICATED
+        host: localhost
+        port: 35001
+      world:
+        flag: 3
+        policy: SESSION_BOUND
+        host: localhost
+        port: 35002
 
 endpoints:
   health:

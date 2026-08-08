@@ -10,21 +10,23 @@ import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.util.AttributeKey;
 import java.util.Map;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
-@RequiredArgsConstructor
 public final class RequestHandler extends ChannelInboundHandlerAdapter {
-    public static final AttributeKey<ConnectionState> STATE_KEY = AttributeKey.valueOf("gateway.state");
+    public static final AttributeKey<SecurityState> STATE_KEY = AttributeKey.valueOf("gateway.state");
     public static final AttributeKey<BackendClient> WORLD_CLIENT_KEY = AttributeKey.valueOf("gateway.worldClient");
     public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("gateway.sessionId");
 
     private final GatewayProperties props;
-    private final BackendClient loginClient;
-    private final BackendClient lobbyClient;
-    private final BackendClient worldClient;
+    private final Map<String, BackendClient> clients;
     private final Map<BackendAddress, BackendClient> dynamicWorldClients;
+
+    public RequestHandler(GatewayProperties props, Map<String, BackendClient> clients, Map<BackendAddress, BackendClient> dynamicWorldClients) {
+        this.props = props;
+        this.clients = clients;
+        this.dynamicWorldClients = dynamicWorldClients;
+    }
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
@@ -36,9 +38,9 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
 
         // Get connection state from parent channel (since QuicStreamChannel's parent is the QuicChannel connection)
         Channel parentChannel = ctx.channel().parent();
-        ConnectionState state = parentChannel.attr(STATE_KEY).get();
+        SecurityState state = parentChannel.attr(STATE_KEY).get();
         if (state == null) {
-            state = ConnectionState.UNAUTHENTICATED;
+            state = SecurityState.UNAUTHENTICATED;
             parentChannel.attr(STATE_KEY).set(state);
         }
 
@@ -50,9 +52,10 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             return;
         }
 
-        // Inject verified sessionId if routing a FLAG_WORLD frame
+        // Inject verified sessionId if routing to a SESSION_BOUND policy endpoint
         GatewayFrame frameToSend = requestFrame;
-        if (requestFrame.flag() == GatewayFrame.FLAG_WORLD) {
+        GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag());
+        if (config != null && "SESSION_BOUND".equals(config.getPolicy())) {
             String sessionId = parentChannel.attr(SESSION_ID_KEY).get();
             if (sessionId != null) {
                 frameToSend = new GatewayFrame(requestFrame.flag(), sessionId, requestFrame.payload());
@@ -87,23 +90,46 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 
-    private BackendClient resolveTargetClient(Channel parentChannel, ConnectionState state, GatewayFrame requestFrame) {
-        // Enforcement rules based on connection state
-        if (state == ConnectionState.UNAUTHENTICATED) {
-            // Force all traffic to login server when unauthenticated
-            return loginClient;
+    private BackendClient resolveTargetClient(Channel parentChannel, SecurityState state, GatewayFrame requestFrame) {
+        GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag());
+        if (config == null) {
+            log.warn("No backend configured for flag: {}", requestFrame.flag());
+            return null;
         }
 
-        // Authenticated or Playing state
-        byte flag = requestFrame.flag();
-        if (flag == GatewayFrame.FLAG_LOGIN) {
-            return loginClient;
-        } else if (flag == GatewayFrame.FLAG_LOBBY) {
-            return lobbyClient;
-        } else if (flag == GatewayFrame.FLAG_WORLD) {
-            if (state == ConnectionState.PLAYING) {
-                BackendClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
-                return world != null ? world : worldClient;
+        // Parse policy state requirement
+        SecurityState requiredState;
+        try {
+            requiredState = SecurityState.valueOf(config.getPolicy());
+        } catch (IllegalArgumentException e) {
+            log.error("Invalid security policy '{}' configured for flag {}", config.getPolicy(), requestFrame.flag());
+            return null;
+        }
+
+        // Enforce the 1:1 security state comparison
+        if (state.level() < requiredState.level()) {
+            log.warn("Access denied: request flag {} requires state >= {}, but client is in state {}", 
+                requestFrame.flag(), requiredState, state);
+            return null;
+        }
+
+        String key = getBackendKeyByFlag(requestFrame.flag());
+        if (key == null) {
+            return null;
+        }
+
+        if (requiredState == SecurityState.SESSION_BOUND) {
+            BackendClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
+            return world != null ? world : clients.get(key);
+        }
+
+        return clients.get(key);
+    }
+
+    private String getBackendKeyByFlag(byte flag) {
+        for (Map.Entry<String, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+            if (entry.getValue().getFlag() == flag) {
+                return entry.getKey();
             }
         }
         return null;
@@ -118,19 +144,26 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         switch (command) {
             case "auth_success" -> {
                 log.info("Client authenticated, transitioning to AUTHENTICATED");
-                parentChannel.attr(STATE_KEY).set(ConnectionState.AUTHENTICATED);
+                parentChannel.attr(STATE_KEY).set(SecurityState.AUTHENTICATED);
             }
             case "play_success" -> {
                 String worldAddr = gcm.worldAddress();
                 String sessionId = gcm.sessionId();
-                log.info("Client play success, sessionId={}, transitioning to PLAYING", sessionId);
+                log.info("Client play success, sessionId={}, transitioning to SESSION_BOUND", sessionId);
 
-                parentChannel.attr(STATE_KEY).set(ConnectionState.PLAYING);
+                parentChannel.attr(STATE_KEY).set(SecurityState.SESSION_BOUND);
                 parentChannel.attr(SESSION_ID_KEY).set(sessionId);
 
                 BackendAddress address;
                 if (worldAddr == null || "DEFAULT".equals(worldAddr) || worldAddr.isBlank()) {
-                    address = new BackendAddress(props.getWorldhost(), props.getWorldport());
+                    // Fall back to default world configured in properties
+                    GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
+                    if (worldConfig != null) {
+                        address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
+                    } else {
+                        log.error("No default world backend configured under key 'world'");
+                        return;
+                    }
                 } else {
                     String[] parts = worldAddr.split(":", 2);
                     if (parts.length == 2) {
@@ -138,17 +171,20 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                             address = new BackendAddress(parts[0], Integer.parseInt(parts[1]));
                         } catch (NumberFormatException e) {
                             log.warn("Invalid worldAddress format '{}', using default", worldAddr);
-                            address = new BackendAddress(props.getWorldhost(), props.getWorldport());
+                            GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
+                            address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
                         }
                     } else {
-                        address = new BackendAddress(props.getWorldhost(), props.getWorldport());
+                        GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
+                        address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
                     }
                 }
 
                 // Resolve the specific world server client
                 BackendClient targetClient;
-                if (address.host().equals(props.getWorldhost()) && address.port() == props.getWorldport()) {
-                    targetClient = worldClient;
+                GatewayProperties.BackendConfig defaultWorldConfig = props.getBackends().get("world");
+                if (defaultWorldConfig != null && address.host().equals(defaultWorldConfig.getHost()) && address.port() == defaultWorldConfig.getPort()) {
+                    targetClient = clients.get("world");
                 } else {
                     targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
                         log.info("Opening new persistent internal connection to dynamic world backend: {}", key);
@@ -159,7 +195,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             }
             case "logout_success" -> {
                 log.info("Client logged out, transitioning to AUTHENTICATED");
-                parentChannel.attr(STATE_KEY).set(ConnectionState.AUTHENTICATED);
+                parentChannel.attr(STATE_KEY).set(SecurityState.AUTHENTICATED);
                 parentChannel.attr(WORLD_CLIENT_KEY).set(null);
                 parentChannel.attr(SESSION_ID_KEY).set(null);
             }

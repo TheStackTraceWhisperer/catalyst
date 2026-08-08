@@ -28,9 +28,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class GatewayServer {
 
     private final GatewayProperties props;
-    private final BackendClient loginClient;
-    private final BackendClient lobbyClient;
-    private final BackendClient worldClient;
+    private final Map<String, BackendClient> clients = new ConcurrentHashMap<>();
     private final Map<BackendAddress, BackendClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
     private EventLoopGroup group;
@@ -39,9 +37,11 @@ public final class GatewayServer {
 
     public GatewayServer(GatewayProperties props) {
         this.props = props;
-        this.loginClient = new BackendClient(props.getLoginhost(), props.getLoginport());
-        this.lobbyClient = new BackendClient(props.getLobbyhost(), props.getLobbyport());
-        this.worldClient = new BackendClient(props.getWorldhost(), props.getWorldport());
+        for (Map.Entry<String, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+            GatewayProperties.BackendConfig config = entry.getValue();
+            log.info("Configuring backend client for '{}' connecting to {}:{}", entry.getKey(), config.getHost(), config.getPort());
+            this.clients.put(entry.getKey(), new BackendClient(config.getHost(), config.getPort()));
+        }
     }
 
     public boolean isBound() {
@@ -69,7 +69,7 @@ public final class GatewayServer {
                     ch.pipeline()
                         .addLast(new GatewayFrameDecoder())
                         .addLast(new GatewayFrameEncoder())
-                        .addLast(new RequestHandler(props, loginClient, lobbyClient, worldClient, dynamicWorldClients));
+                        .addLast(new RequestHandler(props, clients, dynamicWorldClients));
                 }
             })
             .build();
@@ -99,9 +99,8 @@ public final class GatewayServer {
         if (group != null) {
             group.shutdownGracefully(0, 2, TimeUnit.SECONDS);
         }
-        loginClient.close();
-        lobbyClient.close();
-        worldClient.close();
+        clients.values().forEach(BackendClient::close);
+        clients.clear();
         dynamicWorldClients.values().forEach(BackendClient::close);
         dynamicWorldClients.clear();
     }

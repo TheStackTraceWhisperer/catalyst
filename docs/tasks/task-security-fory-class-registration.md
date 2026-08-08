@@ -39,28 +39,38 @@ These are all records in `common-dto` that implement `GatewayMessage`, plus
 - `LogoutRequest`, `LogoutResponse`
 - `GatewayControlMessage`
 
-### 2. Register All Classes in `ForySerializer`
-```java
-private static final ThreadSafeFory FORY = Fory.builder()
-    .withLanguage(Language.JAVA)
-    .requireClassRegistration(true)
-    .buildThreadSafeFory();
+### 2. Register All Classes at Service Startup
 
-static {
-    FORY.register(LoginRequest.class);
-    FORY.register(LoginResponse.class);
-    // ... all DTOs
+> [!IMPORTANT]
+> `common-network` does **not** depend on `common-dto` — and it must not. Adding DTO references
+> into `ForySerializer` would create a circular dependency. Registrations must happen at the
+> application layer, not in the serializer itself.
+
+Each service that participates in Fory serialization must register all DTOs it can legally
+receive or send at startup, before any network traffic is processed. This is best done in a
+`@PostConstruct` method or an `ApplicationEventListener<ServerStartupEvent>` in each service's
+application class:
+
+```java
+// Example: in GatewayApplication or WorldServiceApplication
+@PostConstruct
+void registerForyClasses() {
+    ForySerializer.register(LoginRequest.class);
+    ForySerializer.register(LoginResponse.class);
+    // ... all DTOs this service touches
 }
 ```
 
-### 3. Enforce at Startup
-With `requireClassRegistration(true)`, any payload containing an unregistered class will throw
-immediately at deserialization time rather than silently succeeding. This makes protocol violations
-loud and fast-failing.
+`ForySerializer` needs to expose a `register(Class<?>)` method that delegates to the underlying
+`ThreadSafeFory` instance.
 
-### 4. Keep `ForySerializer` as the Single Source of Truth
-All modules (`gateway`, `login-service`, `lobby-service`, `world-service`, `client-network`) share
-the same `ForySerializer` from `common-network`. Registration only needs to happen in one place.
+### 3. Keep Registration Exhaustive Per Service
+Each service only needs to register the DTOs it actually handles — not the entire universe. For
+example, `login-service` only needs `LoginRequest` and `LoginResponse`. The `gateway` needs all
+of them since it proxies all traffic (even though it never deserializes payloads, it may log or
+inspect frame types).
+
+### 4. Enforce at Startup
 
 ## Acceptance Criteria
 - `requireClassRegistration(true)` is set in `ForySerializer`.

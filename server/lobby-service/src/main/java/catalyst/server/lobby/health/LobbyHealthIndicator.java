@@ -16,12 +16,10 @@ public class LobbyHealthIndicator implements HealthIndicator {
 
     @Override
     public Publisher<HealthResult> getResult() {
-        boolean active = transport.isBound();
-        HealthResult.Builder builder = HealthResult.builder("lobby-quic-server");
-        if (active) {
-            return Publishers.just(builder.status(HealthStatus.UP).build());
-        } else {
-            return Publishers.just(builder.status(HealthStatus.DOWN).build());
-        }
+        return Publishers.just(
+            HealthResult.builder("lobby-quic-server")
+                .status(transport.isBound() ? HealthStatus.UP : HealthStatus.DOWN)
+                .build()
+        );
     }
 }

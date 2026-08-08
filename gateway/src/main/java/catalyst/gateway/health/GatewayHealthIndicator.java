@@ -16,10 +16,10 @@ public class GatewayHealthIndicator implements HealthIndicator {
 
     @Override
     public Publisher<HealthResult> getResult() {
-      return Publishers.just(HealthResult.builder("gateway-quic-server").status(
-          server.isBound()
-            ? HealthStatus.UP
-            : HealthStatus.DOWN
-        ).build());
+        return Publishers.just(
+            HealthResult.builder("gateway-quic-server")
+                .status(server.isBound() ? HealthStatus.UP : HealthStatus.DOWN)
+                .build()
+        );
     }
 }

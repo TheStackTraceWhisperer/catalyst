@@ -65,10 +65,15 @@ void registerForyClasses() {
 `ThreadSafeFory` instance.
 
 ### 3. Keep Registration Exhaustive Per Service
-Each service only needs to register the DTOs it actually handles — not the entire universe. For
-example, `login-service` only needs `LoginRequest` and `LoginResponse`. The `gateway` needs all
-of them since it proxies all traffic (even though it never deserializes payloads, it may log or
-inspect frame types).
+Each service only needs to register the DTOs it actually deserializes:
+
+| Service | Classes to register |
+|---|---|
+| `login-service` | `LoginRequest`, `LoginResponse` |
+| `lobby-service` | `CharListRequest/Response`, `CharCreateRequest/Response`, `CharSelectRequest/Response`, `CharDeleteRequest/Response`, `PlayRequest/Response` |
+| `world-service` | `PingRequest/Response`, `LogoutRequest/Response` |
+| `gateway` | `GatewayControlMessage` only — all game DTOs are forwarded as opaque `byte[]` and are never deserialized by the gateway |
+| `client-network` | All DTOs (client may receive any response) |
 
 ### 4. Enforce at Startup
 

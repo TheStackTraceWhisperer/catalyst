@@ -1,7 +1,7 @@
 package catalyst.server.world.handler;
 
-import catalyst.common.dto.PingRequest;
-import catalyst.common.dto.PingResponse;
+import catalyst.common.dto.world.PingRequest;
+import catalyst.common.dto.world.PingResponse;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.world.repository.SessionRepository;

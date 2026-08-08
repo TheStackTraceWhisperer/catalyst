@@ -1,16 +1,11 @@
-package catalyst.common.dto;
+package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
 
-public record CharCreateRequest(
+public record CharSelectRequest(
     String authToken,
-    String name,
-    int race,
-    int size,
-    int face,
-    int mainJob,
-    String nation
+    long characterId
 ) implements GatewayMessage {
 
     @Override

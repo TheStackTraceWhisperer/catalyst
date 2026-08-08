@@ -1,7 +1,7 @@
 package catalyst.server.lobby.handler;
 
-import catalyst.common.dto.CharDeleteRequest;
-import catalyst.common.dto.CharDeleteResponse;
+import catalyst.common.dto.lobby.CharDeleteRequest;
+import catalyst.common.dto.lobby.CharDeleteResponse;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.common.repository.AuthTicketStore;

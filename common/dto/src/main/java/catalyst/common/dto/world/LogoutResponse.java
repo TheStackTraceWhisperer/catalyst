@@ -1,11 +1,10 @@
-package catalyst.common.dto;
+package catalyst.common.dto.world;
 
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
 import catalyst.common.network.ResponseCode;
 
-public record PingResponse(
-    String type,
+public record LogoutResponse(
     String sessionId,
     ResponseCode code,
     String message

@@ -1,9 +1,9 @@
-package catalyst.common.dto;
+package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
 
-public record CharDeleteRequest(
+public record PlayRequest(
     String authToken,
     long characterId
 ) implements GatewayMessage {

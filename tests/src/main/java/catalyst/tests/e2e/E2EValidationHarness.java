@@ -3,7 +3,9 @@ package catalyst.tests.e2e;
 import catalyst.client.network.dispatch.ClientDispatcher;
 import catalyst.common.network.ResponseCode;
 import catalyst.client.network.QuicGatewayService;
-import catalyst.common.dto.*;
+import catalyst.common.dto.login.*;
+import catalyst.common.dto.lobby.*;
+import catalyst.common.dto.world.*;
 
 import static org.awaitility.Awaitility.await;
 import java.time.Duration;

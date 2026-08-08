@@ -1,24 +1,13 @@
-package catalyst.common.dto;
+package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
 import catalyst.common.network.ResponseCode;
 
-public record PlayResponse(
+public record CharDeleteResponse(
     ResponseCode code,
     String message,
-    String sessionId,
-    long accountId,
-    long characterId,
-    String characterName,
-    int zoneId,
-    int playersInZone,
-    long keepaliveIntervalMs,
-    int homeZoneId,
-    float x,
-    float y,
-    float z,
-    float rot
+    long characterId
 ) implements GatewayMessage {
 
     @Override

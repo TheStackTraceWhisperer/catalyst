@@ -1,7 +1,7 @@
 package catalyst.server.lobby.handler;
 
-import catalyst.common.dto.PlayRequest;
-import catalyst.common.dto.PlayResponse;
+import catalyst.common.dto.lobby.PlayRequest;
+import catalyst.common.dto.world.PlayResponse;
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;

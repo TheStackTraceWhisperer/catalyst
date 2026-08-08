@@ -1,7 +1,7 @@
 package catalyst.server.lobby.handler;
 
-import catalyst.common.dto.CharCreateRequest;
-import catalyst.common.dto.CharCreateResponse;
+import catalyst.common.dto.lobby.CharCreateRequest;
+import catalyst.common.dto.lobby.CharCreateResponse;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.common.repository.AuthTicketStore;

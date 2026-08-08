@@ -1,4 +1,4 @@
-package catalyst.common.dto;
+package catalyst.common.dto.login;
 
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;

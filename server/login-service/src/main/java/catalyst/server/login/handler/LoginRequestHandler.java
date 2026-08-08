@@ -2,8 +2,8 @@ package catalyst.server.login.handler;
 
 import catalyst.common.network.ResponseCode;
 import catalyst.server.common.network.PacketHandler;
-import catalyst.common.dto.LoginRequest;
-import catalyst.common.dto.LoginResponse;
+import catalyst.common.dto.login.LoginRequest;
+import catalyst.common.dto.login.LoginResponse;
 import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.repository.AccountRepository;
 import catalyst.server.common.repository.AuthTicketStore;

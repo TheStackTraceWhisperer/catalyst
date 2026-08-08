@@ -16,6 +16,37 @@ The client architecture is split into two modules:
    * Hosts states like `UnauthenticatedState`, local boots, character selection screens, etc.
    * Handles the `QuicGateway` connection logic.
 
+### 🧵 Concurrency & Dispatch Model
+
+Background tasks utilize a thread-safe queue that drains callbacks on the main render thread to prevent OpenGL multi-threaded mutation crashes.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor RenderThread as Main Render Thread (Engine Tick)
+    participant Scheduler as TaskSchedulerService
+    actor VirtThread as Java Virtual Thread (Background)
+
+    RenderThread->>Scheduler: submit(Callable task, onSuccess, onError)
+    activate Scheduler
+    Scheduler->>VirtThread: Execute background task
+    deactivate Scheduler
+    
+    activate VirtThread
+    Note over VirtThread: Running DB query / Network I/O
+    VirtThread->>Scheduler: runOnMainThread(Runnable callback)
+    Note over Scheduler: Add to ConcurrentLinkedQueue
+    deactivate VirtThread
+    
+    Note over RenderThread: Next Frame (Engine Loop)
+    RenderThread->>Scheduler: processForegroundTasks()
+    activate Scheduler
+    Note over Scheduler: Drain queue & execute callbacks
+    Scheduler->>RenderThread: Run onSuccess(result) or onError(error)
+    Note over RenderThread: Safe to mutate UI or make GL calls
+    deactivate Scheduler
+```
+
 ---
 
 ## 📋 TODO Tasks (Unprioritized)

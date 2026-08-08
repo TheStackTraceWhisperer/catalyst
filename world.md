@@ -10,14 +10,13 @@ The **World Service** is a stateful, microservice-based environment responsible 
 
 * **Transport:** Internal QUIC endpoint communicating over mutual TLS (mTLS) with the Gateway Server.
 * **State Management:** Interacts with the World State database to keep track of active sessions, player positions, and zone populations.
-* **Sequential Simulation:** Needs to process gameplay packets sequentially to prevent concurrency anomalies (e.g. database race conditions during chest looting).
+* **Sequential Simulation (`ZoneMessageDispatcher`):** All inbound requests are buffered in a lock-free queue and processed sequentially on a single virtual thread running a **10Hz tick loop (100ms interval)**. This prevents race conditions during concurrent entity/inventory updates.
+* **Strategy Pattern:** Fully refactored into class-level `@Singleton` strategy beans implementing `PacketHandler<T>`, registered and routed dynamically by the dispatcher.
 
 ---
 
 ## 📋 TODO Tasks (Unprioritized)
 
-- **Implement Zone Tick Loop:** Build the `ZoneMessageDispatcher` running a 10Hz sequential game tick (100ms interval) to process player inputs, updates, AI, and entity syncing.
-- **Handler Strategy Refactoring:** Split monolithic `WorldHandler` methods into individual class-level strategy beans implementing the `PacketHandler<T>` interface.
 - **World Registry Integration:** Integrate with a central World Registry so the Lobby Service can dynamically look up which World Server instance has been assigned to a given `zoneId`.
 - **Entity Spawning & Tracking:** Implement basic spatial entity tracking (players, monsters, NPCs) within zones, mapping coordinate updates (`x, y, z, rot`).
 - **Session Expiry & Cleanup:** Monitor keepalive timestamps and forcefully clean up database session entries for players who have disconnected or missed heartbeats for over 30 seconds.

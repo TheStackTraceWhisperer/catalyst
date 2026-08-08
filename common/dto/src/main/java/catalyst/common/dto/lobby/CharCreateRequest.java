@@ -1,7 +1,7 @@
 package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.LobbyGatewayMessage;
 
 public record CharCreateRequest(
     String authToken,
@@ -11,10 +11,5 @@ public record CharCreateRequest(
     int face,
     int mainJob,
     String nation
-) implements GatewayMessage {
-
-    @Override
-    public byte gatewayFlag() {
-        return GatewayFrame.FLAG_LOBBY;
-    }
+) implements LobbyGatewayMessage {
 }

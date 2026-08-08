@@ -1,7 +1,7 @@
 package catalyst.common.dto.login;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.LoginGatewayMessage;
 import catalyst.common.network.ResponseCode;
 
 public record LoginResponse(
@@ -9,10 +9,5 @@ public record LoginResponse(
     String message,
     String authToken,
     long accountId
-) implements GatewayMessage {
-
-    @Override
-    public byte gatewayFlag() {
-        return GatewayFrame.FLAG_LOGIN;
-    }
+) implements LoginGatewayMessage {
 }

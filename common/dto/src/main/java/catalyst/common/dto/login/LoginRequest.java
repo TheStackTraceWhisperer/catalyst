@@ -1,15 +1,10 @@
 package catalyst.common.dto.login;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.LoginGatewayMessage;
 
 public record LoginRequest(
     String username,
     String password
-) implements GatewayMessage {
-
-    @Override
-    public byte gatewayFlag() {
-        return GatewayFrame.FLAG_LOGIN;
-    }
+) implements LoginGatewayMessage {
 }

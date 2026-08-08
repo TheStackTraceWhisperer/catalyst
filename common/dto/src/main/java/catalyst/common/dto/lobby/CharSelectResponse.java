@@ -1,7 +1,7 @@
 package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.LobbyGatewayMessage;
 import catalyst.common.network.ResponseCode;
 
 public record CharSelectResponse(
@@ -15,10 +15,5 @@ public record CharSelectResponse(
     float y,
     float z,
     float rot
-) implements GatewayMessage {
-
-    @Override
-    public byte gatewayFlag() {
-        return GatewayFrame.FLAG_LOBBY;
-    }
+) implements LobbyGatewayMessage {
 }

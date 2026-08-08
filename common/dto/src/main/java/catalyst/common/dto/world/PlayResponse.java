@@ -1,7 +1,7 @@
 package catalyst.common.dto.world;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.WorldGatewayMessage;
 import catalyst.common.network.ResponseCode;
 
 public record PlayResponse(
@@ -19,10 +19,5 @@ public record PlayResponse(
     float y,
     float z,
     float rot
-) implements GatewayMessage {
-
-    @Override
-    public byte gatewayFlag() {
-        return GatewayFrame.FLAG_LOBBY;
-    }
+) implements WorldGatewayMessage {
 }

@@ -1,8 +1,8 @@
 package catalyst.server.world;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.common.network.ObjectDispatcher;
 import catalyst.common.network.PacketHandler;
+import catalyst.server.world.dispatch.ZoneMessageDispatcher;
 import catalyst.server.world.properties.ServerProperties;
 import catalyst.server.world.repository.SessionRepository;
 import catalyst.server.world.transport.QuicServerTransport;
@@ -21,7 +21,7 @@ import java.util.List;
 public class WorldServiceApplication {
 
     private final QuicServerTransport transport;
-    private final List<PacketHandler<?>> packetHandlers;
+    private final ZoneMessageDispatcher dispatcher;
     private final SessionRepository sessions;
     private final ServerProperties props;
     private final TaskScheduler scheduler;
@@ -34,10 +34,7 @@ public class WorldServiceApplication {
     public void onStartup(StartupEvent event) throws Exception {
         schedulePeriodicPruning();
 
-        ObjectDispatcher dispatcher = new ObjectDispatcher();
-        dispatcher.registerAll(packetHandlers);
-
-        transport.setDispatcher(req -> java.util.concurrent.CompletableFuture.completedFuture(dispatcher.dispatch(req)));
+        transport.setDispatcher(dispatcher::dispatchAsync);
         try {
             transport.start();
             log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
@@ -50,6 +47,7 @@ public class WorldServiceApplication {
     public void onShutdown() {
         log.info("Stopping World Service transport...");
         transport.stop();
+        dispatcher.close();
     }
 
     private void schedulePeriodicPruning() {

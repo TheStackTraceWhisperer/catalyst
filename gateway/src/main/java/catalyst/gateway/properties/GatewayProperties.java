@@ -2,30 +2,13 @@ package catalyst.gateway.properties;
 
 import io.micronaut.context.annotation.ConfigurationProperties;
 import java.util.Map;
-import java.util.HashMap;
 
 @ConfigurationProperties("catalyst.gateway")
-public class GatewayProperties {
-    private int port;
-    private Map<String, BackendConfig> backends = new HashMap<>();
+public interface GatewayProperties {
+    int getPort();
+    Map<String, BackendConfig> getBackends();
 
-    public int getPort() {
-        return port;
-    }
-
-    public void setPort(int port) {
-        this.port = port;
-    }
-
-    public Map<String, BackendConfig> getBackends() {
-        return backends;
-    }
-
-    public void setBackends(Map<String, BackendConfig> backends) {
-        this.backends = backends;
-    }
-
-    public static class BackendConfig {
+    class BackendConfig {
         private byte flag;
         private String policy;
         private String host;
@@ -64,8 +47,11 @@ public class GatewayProperties {
         }
     }
 
-    public BackendConfig getBackendByFlag(byte flag) {
-        for (BackendConfig config : backends.values()) {
+    default BackendConfig getBackendByFlag(byte flag) {
+        if (getBackends() == null) {
+            return null;
+        }
+        for (BackendConfig config : getBackends().values()) {
             if (config.getFlag() == flag) {
                 return config;
             }

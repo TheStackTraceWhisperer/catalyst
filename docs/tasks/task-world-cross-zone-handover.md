@@ -47,3 +47,8 @@ server instances.
 - No duplicate sessions exist after the handover completes.
 - Other players in both zones receive correct spawn/despawn notifications.
 - The gateway transparently routes the player's subsequent packets to the new world server.
+
+## Sub-Tasks
+This task has been broken into the following smaller tasks:
+- **task-world-cross-zone-1-protocol.md** — ZoneTransitionRequest/Response DTOs and zone_transition gateway control command
+- **task-world-cross-zone-2-handover-execution.md** — Server-side session transfer, entity lifecycle events, gateway re-bind

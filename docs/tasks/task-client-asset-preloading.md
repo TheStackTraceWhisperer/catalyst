@@ -41,3 +41,8 @@ Initial scope covers:
 - Loading a texture does not block or stutter the render loop.
 - The same texture requested twice returns a cached handle without a duplicate disk read.
 - A placeholder / loading indicator is shown while the asset is in-flight.
+
+## Sub-Tasks
+This task has been broken into the following smaller tasks:
+- **task-client-asset-preloading-1-asset-manager.md** — AssetManager core (cache, in-flight tracking, GL thread callback)
+- **task-client-asset-preloading-2-ui-screens.md** — Wire AssetManager into login and character selection screens

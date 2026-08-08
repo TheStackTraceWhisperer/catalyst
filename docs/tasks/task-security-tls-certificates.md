@@ -39,3 +39,9 @@ Affected files:
 - The QUIC handshake between gateway and backend services uses mutual TLS (mTLS).
 - Certificates rotate without requiring a code change or rebuild.
 - E2E test harness still passes with cert-based TLS.
+
+## Sub-Tasks
+This task has been broken into the following smaller tasks:
+- **task-security-tls-1-server-cert-loading.md** — Replace ephemeral SelfSignedCertificate with file-based loading in all services
+- **task-security-tls-2-client-validation.md** — Remove InsecureTrustManagerFactory, add CA bundle validation in client and gateway
+- **task-security-tls-3-cert-manager.md** — Automate issuance and rotation via Cert-Manager in k3d

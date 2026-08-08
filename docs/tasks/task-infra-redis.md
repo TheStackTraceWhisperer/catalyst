@@ -41,3 +41,8 @@ state that would not survive a pod restart or horizontal scale-out.
 - Lobby service reads the world address from Redis on `PLAY` requests.
 - Active sessions survive a lobby service pod restart (they live in Redis, not in-process).
 - The gateway can validate a session ID against Redis without touching Postgres.
+
+## Sub-Tasks
+This task has been broken into the following smaller tasks:
+- **task-infra-redis-1-cluster-setup.md** — Redis Deployment and Service in k3d, dependency config
+- **task-infra-redis-2-session-store.md** — Migrate in-process session maps to Redis-backed store

@@ -43,3 +43,9 @@ and what kind they are (player, monster, NPC, object).
 - Two clients in the same zone each receive the other's spawn notification on entry.
 - Movement updates from one client appear in the zone entity state on the server.
 - Logout removes the entity and notifies remaining players.
+
+## Sub-Tasks
+This task has been broken into the following smaller tasks:
+- **task-world-entity-spawning-1-entity-model.md** — ZoneEntity record, ZoneState map, ZoneManager
+- **task-world-entity-spawning-2-spawn-despawn.md** — Wire spawn/despawn into PLAY and LOGOUT handlers with zone broadcast
+- **task-world-entity-spawning-3-movement.md** — MoveRequest DTO, MoveRequestHandler, and MoveUpdate zone broadcast

@@ -29,3 +29,8 @@ While Phase 1 fully exercises the dynamic gateway routing paths, the lobby servi
 - Starting two world service instances hosting different zones dynamically registers them in the shared datastore.
 - The lobby service successfully routes players based on the registry lookup.
 - Graceful shutdown of a world instance removes its entries, avoiding routing failures.
+
+## Sub-Tasks (Phase 2)
+Phase 2 has been broken into the following smaller tasks:
+- **task-world-registry-1-zone-registration.md** — World service self-registers hosted zones in Redis on startup/shutdown
+- **task-world-registry-2-lobby-lookup.md** — Lobby service replaces hardcoded DNS format with live Redis registry lookup

@@ -28,7 +28,6 @@ public class UnauthenticatedState implements ApplicationState {
     private final QuicGatewayService gateway;
     private final ApplicationStateService stateService;
     private final BeanProvider<AuthenticatedState> authenticatedProvider;
-    private final BeanProvider<LocalZoneState> localProvider;
     private final ClientProperties props;
 
     private String host;
@@ -48,7 +47,6 @@ public class UnauthenticatedState implements ApplicationState {
         panel.render();
         debugLog.render();
         if (panel.isLoginRequested())     doLogin();
-        if (panel.isLocalModeRequested()) stateService.changeState(localProvider::get);
         panel.clearIntents();
     }
 

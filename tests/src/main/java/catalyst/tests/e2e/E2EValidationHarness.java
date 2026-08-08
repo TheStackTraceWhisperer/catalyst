@@ -5,6 +5,9 @@ import catalyst.client.network.QuicGatewayService;
 import catalyst.common.dto.*;
 import java.io.IOException;
 import java.util.List;
+import static org.awaitility.Awaitility.await;
+import java.time.Duration;
+import java.util.concurrent.atomic.AtomicReference;
 
 public final class E2EValidationHarness {
 
@@ -15,7 +18,8 @@ public final class E2EValidationHarness {
         System.out.println("=== Starting E2E Protocol Validation Harness ===");
         System.out.println("Target: " + host + ":" + port);
 
-        try (QuicGatewayService service = new QuicGatewayService(new catalyst.common.network.ClientDispatcher())) {
+        catalyst.common.network.ClientDispatcher dispatcher = new catalyst.common.network.ClientDispatcher();
+        try (QuicGatewayService service = new QuicGatewayService(dispatcher)) {
             // 1. LOGIN
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
             var loginResp = service.request(host, port, new LoginRequest("dev", "dev"), LoginResponse.class);
@@ -86,8 +90,22 @@ public final class E2EValidationHarness {
 
             // 6. PING/PONG validation
             System.out.println("\nStep 6: Sending PING/PONG validation...");
-            var pingResp = service.request(host, port, new PingRequest(sessionId), PingResponse.class);
-            System.out.println("Ping Response: " + pingResp);
+            service.sendAsync(host, port, new PingRequest(sessionId));
+            
+            AtomicReference<PingResponse> pingRespRef = new AtomicReference<>();
+            await().atMost(Duration.ofSeconds(5))
+                   .pollInterval(Duration.ofMillis(50))
+                   .until(() -> {
+                       Object pkt = dispatcher.pollNextPacket();
+                       if (pkt instanceof PingResponse pr) {
+                           pingRespRef.set(pr);
+                           return true;
+                       }
+                       return false;
+                   });
+            
+            PingResponse pingResp = pingRespRef.get();
+            System.out.println("Ping Response (Async): " + pingResp);
             if (!"PONG".equals(pingResp.type())) {
                 throw new AssertionError("PING/PONG failed!");
             }

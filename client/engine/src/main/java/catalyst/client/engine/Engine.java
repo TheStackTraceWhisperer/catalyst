@@ -37,6 +37,7 @@ public final class Engine implements Runnable {
             return;
         }
         log.info("Initializing Catalyst Engine");
+        // Samuel - Slightly concerned; do we have any guarantee that `services` will be a mutable list? If not, this sort could throw an exception. We should probably defensively copy it first.
         services.sort(Comparator.comparingInt(IService::executionOrder));
         for (IService service : services) {
             log.debug("Starting service: {}", service.getClass().getSimpleName());

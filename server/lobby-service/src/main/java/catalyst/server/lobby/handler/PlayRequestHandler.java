@@ -30,7 +30,7 @@ public class PlayRequestHandler implements PacketHandler<PlayRequest> {
     }
 
     @Override
-    public Object handle(PlayRequest req) {
+    public Object handle(PlayRequest req, String sessionId) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
             return new PlayResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
@@ -45,9 +45,9 @@ public class PlayRequestHandler implements PacketHandler<PlayRequest> {
                 return new PlayResponse(ResponseCode.NOT_FOUND, "Character not found", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
             }
             var id = identity.get();
-            String sessionId;
+            String newSessionId;
             try {
-                sessionId = sessions.create(accountId, charId, id.currentZoneId());
+                newSessionId = sessions.create(accountId, charId, id.currentZoneId());
             } catch (SQLException e) {
                 if ("23505".equals(e.getSQLState())) {
                     log.info("PLAY_ERR account={} charId={} reason=already_online", accountId, charId);
@@ -56,10 +56,10 @@ public class PlayRequestHandler implements PacketHandler<PlayRequest> {
                 throw e;
             }
             int pop = sessions.getZonePopulation(id.currentZoneId());
-            log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, sessionId, id.currentZoneId(), pop);
+            log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, newSessionId, id.currentZoneId(), pop);
 
             PlayResponse playResponse = new PlayResponse(
-                ResponseCode.OK, null, sessionId,
+                ResponseCode.OK, null, newSessionId,
                 accountId, charId, id.name(),
                 id.currentZoneId(), pop,
                 props.getKeepaliveIntervalMs(),
@@ -69,7 +69,7 @@ public class PlayRequestHandler implements PacketHandler<PlayRequest> {
 
             // Return both the control message for the gateway and the play response for the client
             return new Object[] {
-                new GatewayControlMessage("play_success", sessionId, "DEFAULT"),
+                new GatewayControlMessage("play_success", newSessionId, "DEFAULT"),
                 playResponse
             };
         } catch (SQLException e) {

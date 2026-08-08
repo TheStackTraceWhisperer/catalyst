@@ -1,7 +1,6 @@
 package catalyst.server.world.dispatch;
 
 import catalyst.server.common.network.PacketHandler;
-import catalyst.server.common.network.SessionContext;
 import io.micronaut.context.BeanProvider;
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Singleton;
@@ -96,14 +95,11 @@ public class ZoneMessageDispatcher implements AutoCloseable {
             
             if (handler != null) {
                 try {
-                    SessionContext.setSessionId(sessionId);
-                    Object response = invokeHandler(handler, payload);
+                    Object response = invokeHandler(handler, payload, sessionId);
                     future.complete(response);
                 } catch (Throwable t) {
                     log.error("Error processing packet: {}", payload.getClass().getSimpleName(), t);
                     future.completeExceptionally(t);
-                } finally {
-                    SessionContext.clear();
                 }
             } else {
                 log.warn("Dropped packet! No handler registered for: {}", payload.getClass().getName());
@@ -113,8 +109,8 @@ public class ZoneMessageDispatcher implements AutoCloseable {
     }
 
     @SuppressWarnings("unchecked")
-    private <T> Object invokeHandler(PacketHandler<T> handler, Object payload) throws Exception {
-        return handler.handle((T) payload);
+    private <T> Object invokeHandler(PacketHandler<T> handler, Object payload, String sessionId) throws Exception {
+        return handler.handle((T) payload, sessionId);
     }
 
     @Override

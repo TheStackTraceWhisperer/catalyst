@@ -33,7 +33,7 @@ public class LoginRequestHandler implements PacketHandler<LoginRequest> {
     }
 
     @Override
-    public Object handle(LoginRequest req) {
+    public Object handle(LoginRequest req, String sessionId) {
         String username = normalize(req.username());
         String password = normalize(req.password());
         if (username.isBlank() || password.isBlank()) {

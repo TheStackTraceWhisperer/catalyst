@@ -27,7 +27,7 @@ public class CharSelectRequestHandler implements PacketHandler<CharSelectRequest
     }
 
     @Override
-    public CharSelectResponse handle(CharSelectRequest req) {
+    public Object handle(CharSelectRequest req, String sessionId) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
             return new CharSelectResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", -1, null, 0, 0, 0f, 0f, 0f, 0f);

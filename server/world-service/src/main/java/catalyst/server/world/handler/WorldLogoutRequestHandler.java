@@ -5,7 +5,6 @@ import catalyst.common.dto.LogoutResponse;
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
-import catalyst.server.common.network.SessionContext;
 import catalyst.server.world.repository.SessionRepository;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -25,8 +24,8 @@ public class WorldLogoutRequestHandler implements PacketHandler<LogoutRequest> {
     }
 
     @Override
-    public Object handle(LogoutRequest req) {
-        String sessionId = normalize(SessionContext.getSessionId());
+    public Object handle(LogoutRequest req, String sessionId) {
+        sessionId = normalize(sessionId);
         if (sessionId.isBlank()) {
             return new LogoutResponse("-", ResponseCode.CONFLICT, "Missing sessionId");
         }

@@ -27,7 +27,7 @@ public class CharDeleteRequestHandler implements PacketHandler<CharDeleteRequest
     }
 
     @Override
-    public CharDeleteResponse handle(CharDeleteRequest req) {
+    public Object handle(CharDeleteRequest req, String sessionId) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
             return new CharDeleteResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", -1);

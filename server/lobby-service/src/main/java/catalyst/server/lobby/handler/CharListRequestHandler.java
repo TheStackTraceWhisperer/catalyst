@@ -27,7 +27,7 @@ public class CharListRequestHandler implements PacketHandler<CharListRequest> {
     }
 
     @Override
-    public CharListResponse handle(CharListRequest req) {
+    public Object handle(CharListRequest req, String sessionId) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
             return new CharListResponse(ResponseCode.UNAUTHORIZED, new ArrayList<>());

@@ -49,7 +49,7 @@ public class CharCreateRequestHandler implements PacketHandler<CharCreateRequest
     }
 
     @Override
-    public CharCreateResponse handle(CharCreateRequest req) {
+    public Object handle(CharCreateRequest req, String sessionId) {
         Long accountId = tickets.validate(req.authToken());
         if (accountId == null) {
             return new CharCreateResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", -1, null);

@@ -6,4 +6,5 @@ public interface ApplicationState {
     void onExit();
     default void onResume()  {}
     default void onSuspend() {}
+    default void onHandlePacket(Object packet) {}
 }

@@ -15,7 +15,7 @@ public final class E2EValidationHarness {
         System.out.println("=== Starting E2E Protocol Validation Harness ===");
         System.out.println("Target: " + host + ":" + port);
 
-        try (QuicGatewayService service = new QuicGatewayService()) {
+        try (QuicGatewayService service = new QuicGatewayService(new catalyst.common.network.ClientDispatcher())) {
             // 1. LOGIN
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
             var loginResp = service.login(host, port, "dev", "dev");

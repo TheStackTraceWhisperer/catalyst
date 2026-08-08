@@ -4,6 +4,7 @@ import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
+import catalyst.common.network.ClientDispatcher;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -30,11 +31,16 @@ final class QuicGateway implements AutoCloseable {
     static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 
+    private final ClientDispatcher clientDispatcher;
     private EventLoopGroup group;
     private Channel udpChannel;
     private QuicChannel quicChannel;
     private String connectedHost;
     private int connectedPort;
+
+    public QuicGateway(ClientDispatcher clientDispatcher) {
+        this.clientDispatcher = clientDispatcher;
+    }
 
     synchronized <T> T request(String host, int port, Object request, Class<T> responseType) throws IOException {
         try {
@@ -88,7 +94,12 @@ final class QuicGateway implements AutoCloseable {
             .streamHandler(new ChannelInitializer<QuicStreamChannel>() {
                 @Override
                 protected void initChannel(QuicStreamChannel ch) {
-                    // server-initiated streams not used; discard
+                    ch.pipeline()
+                        .addLast(new GatewayFrameDecoder())
+                        .addLast(new GatewayFrameEncoder())
+                        .addLast(new ForyDecoder())
+                        .addLast(new ForyEncoder())
+                        .addLast(new ServerPushStreamHandler(clientDispatcher));
                 }
             })
             .remoteAddress(new InetSocketAddress(host, port))
@@ -189,6 +200,24 @@ final class QuicGateway implements AutoCloseable {
         @Override
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             future.completeExceptionally(cause);
+            ctx.close();
+        }
+    }
+    private static final class ServerPushStreamHandler extends SimpleChannelInboundHandler<Object> {
+        private final ClientDispatcher clientDispatcher;
+
+        ServerPushStreamHandler(ClientDispatcher clientDispatcher) {
+            this.clientDispatcher = clientDispatcher;
+        }
+
+        @Override
+        protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
+            clientDispatcher.enqueue(msg);
+            ctx.close();
+        }
+
+        @Override
+        public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             ctx.close();
         }
     }

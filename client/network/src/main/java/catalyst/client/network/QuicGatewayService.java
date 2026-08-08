@@ -2,6 +2,7 @@ package catalyst.client.network;
 
 import catalyst.common.dto.*;
 import catalyst.common.network.ResponseCode;
+import catalyst.common.network.ClientDispatcher;
 import jakarta.inject.Singleton;
 import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +19,11 @@ import java.util.List;
 @Singleton
 public class QuicGatewayService implements AutoCloseable {
 
-    private final QuicGateway gateway = new QuicGateway();
+    private final QuicGateway gateway;
+
+    public QuicGatewayService(ClientDispatcher clientDispatcher) {
+        this.gateway = new QuicGateway(clientDispatcher);
+    }
 
     public record CharacterSummary(
         String id,

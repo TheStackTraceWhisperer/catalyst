@@ -8,6 +8,8 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
+import catalyst.common.network.ClientDispatcher;
+import catalyst.client.engine.services.state.ApplicationState;
 import java.util.Comparator;
 import java.util.List;
 
@@ -24,6 +26,7 @@ public final class Engine implements Runnable {
     private final WindowService windowService;
     private final FrameTimeService frameTime;
     private final TaskScheduler taskScheduler;
+    private final ClientDispatcher clientDispatcher;
 
     private EngineState state = EngineState.NEW;
     private int frames = 0;
@@ -49,6 +52,15 @@ public final class Engine implements Runnable {
         }
         windowService.pollEvents();
         taskScheduler.processForegroundTasks();
+        
+        Object packet;
+        while ((packet = clientDispatcher.pollNextPacket()) != null) {
+            ApplicationState active = stateService.peek();
+            if (active != null) {
+                active.onHandlePacket(packet);
+            }
+        }
+
         for (IService service : services) service.update();
         float dt = frameTime.getDeltaTimeSeconds();
         for (IService service : services) service.update(dt);

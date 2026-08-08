@@ -13,6 +13,43 @@ The **World Service** is a stateful, microservice-based environment responsible 
 * **Sequential Simulation (`ZoneMessageDispatcher`):** All inbound requests are buffered in a lock-free queue and processed sequentially on a single virtual thread running a **10Hz tick loop (100ms interval)**. This prevents race conditions during concurrent entity/inventory updates.
 * **Strategy Pattern:** Fully refactored into class-level `@Singleton` strategy beans implementing `PacketHandler<T>`, registered and routed dynamically by the dispatcher.
 
+### 🧵 World Concurrency & Tick Loop Dispatch
+
+Netty EventLoops instantly offload packets into the lock-free Zone Queue. The Tick Thread drains this queue sequentially every 100ms to preserve thread-safe simulation.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client as Client / Gateway
+    participant EventLoop as Netty EventLoop (Thread A)
+    participant Queue as Zone Queue (ConcurrentLinkedQueue)
+    participant TickLoop as Zone Tick Thread (10Hz VT Thread B)
+    participant Handler as PacketHandler Strategy
+
+    Client->>EventLoop: GatewayFrame(PlayRequest)
+    activate EventLoop
+    EventLoop->>Queue: offer(QueuedCommand(payload, future))
+    Note over EventLoop: Returns instantly to event loop
+    deactivate EventLoop
+
+    Note over TickLoop: 100ms Tick Interval Expires
+    activate TickLoop
+    TickLoop->>Queue: poll()
+    Queue-->>TickLoop: QueuedCommand(PlayRequest, future)
+    
+    TickLoop->>Handler: handle(PlayRequest)
+    activate Handler
+    Handler-->>TickLoop: PlayResponse
+    deactivate Handler
+
+    TickLoop->>EventLoop: future.complete(PlayResponse)
+    deactivate TickLoop
+    
+    activate EventLoop
+    EventLoop->>Client: GatewayFrame(PlayResponse)
+    deactivate EventLoop
+```
+
 ---
 
 ## 📋 TODO Tasks (Unprioritized)

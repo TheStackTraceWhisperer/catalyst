@@ -5,6 +5,7 @@ import catalyst.client.network.QuicGatewayService;
 import catalyst.client.application.ui.DebugLogPanel;
 import catalyst.client.application.ui.LoginPanel;
 import catalyst.common.network.ResponseCode;
+import catalyst.common.dto.LoginRequest;
 import catalyst.common.dto.LoginResponse;
 import catalyst.client.engine.services.imgui.ImGuiService;
 import catalyst.client.engine.services.state.ApplicationState;
@@ -56,7 +57,7 @@ public class UnauthenticatedState implements ApplicationState {
 
     private void doLogin() {
         try {
-            LoginResponse resp = gateway.login(host, port, panel.getUsername(), panel.getPassword());
+            LoginResponse resp = gateway.request(host, port, new LoginRequest(panel.getUsername(), panel.getPassword()), LoginResponse.class);
             if (resp.code() == ResponseCode.OK) {
                 String authToken  = resp.authToken();
                 String accountId  = Long.toString(resp.accountId());

@@ -4,6 +4,7 @@ import catalyst.common.concurrency.TaskHandle;
 import catalyst.common.concurrency.TaskScheduler;
 import catalyst.common.concurrency.TaskStatus;
 import catalyst.common.network.ResponseCode;
+import catalyst.common.dto.PingRequest;
 import catalyst.common.dto.PingResponse;
 import jakarta.inject.Singleton;
 import lombok.Getter;
@@ -87,7 +88,7 @@ public class KeepAliveService {
     public void sendPing() {
         long t0 = System.currentTimeMillis();
         try {
-            PingResponse resp = gateway.ping(host, port, sessionId);
+            PingResponse resp = gateway.request(host, port, new PingRequest(sessionId), PingResponse.class);
             long rtt = System.currentTimeMillis() - t0;
             if (resp.code() == ResponseCode.OK) {
                 status = "ok";

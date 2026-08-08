@@ -4,7 +4,7 @@ import catalyst.client.network.KeepAliveService;
 import catalyst.client.network.QuicGatewayService;
 import catalyst.client.application.ui.DebugLogPanel;
 import catalyst.client.application.ui.InGamePanel;
-import catalyst.common.dto.LogoutResponse;
+import catalyst.common.dto.*;
 import catalyst.client.engine.services.state.ApplicationState;
 import catalyst.client.engine.services.state.ApplicationStateService;
 import io.micronaut.context.BeanProvider;
@@ -92,7 +92,7 @@ public class InGameState implements ApplicationState {
         if (sessionClosed) return;
         sessionClosed = true;
         try {
-            LogoutResponse resp = gateway.logout(host, port, sessionId);
+            LogoutResponse resp = gateway.request(host, port, new LogoutRequest(sessionId), LogoutResponse.class);
             debugLog.log("LOGOUT_OK session=" + resp.sessionId());
         } catch (Exception e) {
             debugLog.log("LOGOUT_ERR " + e.getMessage());

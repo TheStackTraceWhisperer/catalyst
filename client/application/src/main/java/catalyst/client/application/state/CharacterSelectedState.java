@@ -1,7 +1,6 @@
 package catalyst.client.application.state;
 
 import catalyst.client.network.QuicGatewayService;
-import catalyst.client.network.QuicGatewayService.CharacterSummary;
 import catalyst.client.application.ui.CharacterPanel;
 import catalyst.client.application.ui.CharacterPanel.CharRow;
 import catalyst.client.application.ui.DebugLogPanel;
@@ -70,9 +69,19 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void refreshCharacters() {
         try {
-            List<CharacterSummary> summaries = gateway.listCharacterSummaries(host, port, authToken);
-            List<CharRow> rows = summaries.stream()
-                .map(c -> new CharRow(c.id(), c.name(), c.raceName(), c.size(), c.face(), c.jobName(), c.nationName()))
+            CharListResponse resp = gateway.request(host, port, new CharListRequest(authToken), CharListResponse.class);
+            if (resp.code() != ResponseCode.OK) {
+                throw new Exception("CHAR_LIST_ERR " + resp.code());
+            }
+            List<CharRow> rows = resp.characters().stream()
+                .map(c -> {
+                    String nationStr = switch (c.nation()) {
+                        case 0 -> "Sandy";
+                        case 1 -> "Bastok";
+                        default -> "Windurst";
+                    };
+                    return new CharRow(c.id(), c.name(), c.raceName(), c.size(), c.face(), c.jobName(), nationStr);
+                })
                 .toList();
             panel.setCharacters(rows);
             updateSelectedStatus();
@@ -84,7 +93,8 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doSelect(String charId) {
         try {
-            CharSelectResponse resp = gateway.selectCharacter(host, port, authToken, charId);
+            long characterIdVal = Long.parseLong(charId);
+            CharSelectResponse resp = gateway.request(host, port, new CharSelectRequest(authToken, characterIdVal), CharSelectResponse.class);
             if (resp.code() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.code()); return; }
             characterId = charId;
             characterName = resp.characterName();
@@ -99,7 +109,8 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doDelete(String charId) {
         try {
-            CharDeleteResponse resp = gateway.deleteCharacter(host, port, authToken, charId);
+            long characterIdVal = Long.parseLong(charId);
+            CharDeleteResponse resp = gateway.request(host, port, new CharDeleteRequest(authToken, characterIdVal), CharDeleteResponse.class);
             if (resp.code() == ResponseCode.OK) {
                 debugLog.log("CHAR_DELETE_OK id=" + charId);
                 refreshCharacters();
@@ -111,11 +122,12 @@ public class CharacterSelectedState implements ApplicationState {
         }
     }
 
-    private void doCreate( ) {
+    private void doCreate() {
         try {
-            CharCreateResponse resp = gateway.createCharacter(host, port, authToken, panel.getNewName(),
-                panel.getRaceId(), panel.getSizeId(), panel.getFaceId(), panel.getJobId(),
-                Integer.toString(panel.getNationId()));
+            CharCreateResponse resp = gateway.request(host, port,
+                new CharCreateRequest(authToken, panel.getNewName(), panel.getRaceId(), panel.getSizeId(),
+                    panel.getFaceId(), panel.getJobId(), Integer.toString(panel.getNationId())),
+                CharCreateResponse.class);
             if (resp.code() == ResponseCode.OK) {
                 debugLog.log("CHAR_CREATE_OK id=" + resp.characterId() + " name=" + resp.name());
                 panel.hideCreateForm();
@@ -134,7 +146,8 @@ public class CharacterSelectedState implements ApplicationState {
 
     private void doPlay() {
         try {
-            PlayResponse resp = gateway.play(host, port, authToken, characterId);
+            long characterIdVal = Long.parseLong(characterId);
+            PlayResponse resp = gateway.request(host, port, new PlayRequest(authToken, characterIdVal), PlayResponse.class);
             if (resp.code() != ResponseCode.OK) { debugLog.log("PLAY_ERR " + resp.code()); return; }
             String sessionId = resp.sessionId();
             int zoneId = resp.zoneId();

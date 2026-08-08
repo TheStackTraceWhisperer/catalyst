@@ -2,19 +2,18 @@
 
 ## Overview
 
-This document describes the complete network architecture for the Catalyst Java project, covering the production server topology, client connection lifecycle, message routing, internal trust model, and phase transitions. PlantUML diagrams are included for each major concept.
-
-This project uses a client-facing gateway that routes all traffic to internal backend services. QUIC is used for **all** transport — external and internal.
-
+Catalyst uses QUIC over UDP for **all** transport — both external (client ↔ gateway) and internal
+(gateway ↔ backend services). The client has a single public address for its entire session
+lifetime. All backend services are unreachable from the internet.
 
 > [!NOTE]
-> For the design specification, DTO-agnostic framing, and stateful gateway routing decisions, see [ADR 0001: Stateful Gateway Routing & Apache Fory Serialization](file:///home/samuel/projects/ffxi-java/docs/adr/0001-network-architecture-and-gateway-routing.md).
+> For the design rationale behind `GatewayFrame`, Apache Fory serialization, and the stateful
+> connection machine, see [ADR 0001](adr/0001-network-architecture-and-gateway-routing.md).
+> For the gateway request sequence, see [gateway_sequence.puml](gateway_sequence.puml).
 
 ---
 
 ## 1. Production Topology
-
-All communication — client-facing and internal — uses QUIC over UDP. External traffic terminates at the gateway; internal services are unreachable from the internet.
 
 ```plantuml
 @startuml topology
@@ -31,8 +30,8 @@ rectangle "DMZ" {
 }
 
 rectangle "Private Network" {
-  component [Login Service\n(QUIC internal)] as LOGIN
-  component [Lobby Service\n(QUIC internal)] as LOBBY
+  component [Login Service\n(QUIC internal :35556)] as LOGIN
+  component [Lobby Service\n(QUIC internal :35556)] as LOBBY
   database [PostgreSQL\n(accounts, characters)] as DB
   rectangle "World Cluster" {
     component [World Server A\n(zones 1-100)] as WA
@@ -54,32 +53,29 @@ WB -right-> WS
 ```
 
 **Key properties:**
-- The client has **one address** for its entire session lifetime.
-- All backend services are unreachable from the internet — the gateway is the sole public endpoint.
-- Internal communication uses the same `MessageFrame`/`WireCodec` stack as the client transport; no second protocol stack.
-- The gateway maintains a routing table mapping `sessionId → world server` after `PLAY`.
-- World servers can be added or restarted without the client noticing.
+- The client connects once and reuses the same QUIC connection for its entire session.
+- The gateway is the **sole** public endpoint — backend services have no public address.
+- Internal gateway ↔ backend communication uses the same `GatewayFrame` / Fory wire stack as the
+  external transport. There is no second protocol.
+- The gateway maintains a `sessionId → world server` binding per connection after `PLAY`.
+- World servers can be scaled or restarted independently without the client noticing.
 
 ---
 
 ## 2. Internal Trust Model
 
-### Trust Design
-The trust model assumes login and world servers operate behind a gateway. The gateway routes external clients to backend services, avoiding exposing internal services to potential impersonation.
-
-### Why the gateway eliminates this problem
-
-The gateway is the **only** service with a public address. Network-level enforcement (firewall rules, k8s NetworkPolicy) ensures:
-
-1. Internet → gateway only
+### Network Position Enforcement
+The gateway is the only service with a public address. Kubernetes `NetworkPolicy` enforces:
+1. Internet → gateway only (UDP :35555)
 2. Gateway → backend services only (private CIDR)
-3. Backend services cannot be reached from the internet regardless of what code they run
+3. Backend services cannot be reached from the internet regardless of code
 
-External spoofing of internal sources becomes physically impossible — there is no path from the internet to Login, Lobby, or World. The classic server registry and per-packet source validation are not needed.
+External spoofing of internal sources is physically impossible — there is no network path from
+the internet to Login, Lobby, or World.
 
-### What mTLS adds on the private network
-
-Even inside the private network, mutual TLS (mTLS) ensures that a compromised service cannot impersonate another. The threat model shifts from "external actor spoofing internal source" to "lateral movement from a compromised pod":
+### What mTLS Adds on the Private Network
+Even inside the private network, mTLS ensures a compromised pod cannot impersonate another
+service. The threat model shifts from external spoofing to lateral movement.
 
 ```plantuml
 @startuml trust
@@ -87,7 +83,7 @@ Even inside the private network, mutual TLS (mTLS) ensures that a compromised se
 skinparam defaultFontSize 13
 skinparam linetype ortho
 
-rectangle "Certificate Authority\n(internal, cert-manager or static)" as CA
+rectangle "Certificate Authority\n(internal, cert-manager)" as CA
 
 rectangle "Gateway" as GW #LightBlue
 rectangle "Login Service" as LS #LightGreen
@@ -109,7 +105,7 @@ WS -down-> DB : mTLS (world state only)
 @enduml
 ```
 
-### Least-privilege access matrix
+### Least-Privilege Access Matrix
 
 | Service | Can reach | Cannot reach |
 |---|---|---|
@@ -118,107 +114,92 @@ WS -down-> DB : mTLS (world state only)
 | Lobby | PostgreSQL (characters), World Registry | Login directly, World State DB |
 | World | World State DB | Login, Lobby, accounts/characters DB |
 
-### Auth token validation: once at the gateway
+### Auth Token Validation: Once at the Gateway
+Auth tokens are validated **once** at the gateway before forwarding. Backend services trust that
+any inbound QUIC connection arrived from the gateway (enforced by network position + mTLS cert)
+and do not re-validate tokens per-request.
 
-Auth tokens are validated **once** at the gateway before forwarding. Backend services trust that any inbound QUIC connection arrived from the gateway (enforced by network position + mTLS cert), and do not re-validate tokens. This eliminates the classic Catalyst pattern of each server maintaining its own session verification chain.
-
-### Production cert management options
-
-| Environment | Approach |
-|---|---|
-| Dev / single-node | Self-signed cert generated at startup (current) |
-| Docker Compose / bare metal | Static internal CA, certs baked into service containers at deploy |
-| Kubernetes | cert-manager with a `ClusterIssuer`; automatic rotation, no manual cert lifecycle |
+> [!NOTE]
+> **Current state:** TLS certificates are currently self-signed and generated at startup. Replacing
+> these with Cert-Manager-provisioned certificates is tracked in
+> [`task-security-tls-certificates.md`](tasks/task-security-tls-certificates.md).
 
 ---
 
-## 3. Current State (Milestone 1)
+## 3. Wire Protocol
 
-The milestone 1 single-server deployment collapses everything into one process. The gateway split is additive — the internal architecture is already logically separated.
+### 3.1 Transport Envelope: `GatewayFrame`
 
-```plantuml
-@startuml milestone1
-!theme plain
-skinparam defaultFontSize 13
+Every message on the wire is wrapped in a [`GatewayFrame`](../common/network/src/main/java/catalyst/common/network/GatewayFrame.java):
 
-actor Client
+| Field | Type | Purpose |
+|---|---|---|
+| `flag` | `byte` | Destination routing (`0x01` Login, `0x02` Lobby, `0x03` World, `0x80` Control) |
+| `metadata` | `String` (UTF-8) | Lightweight routing headers for gateway-internal signals |
+| `payload` | `byte[]` | Fory-serialized application DTO — treated as opaque bytes by the gateway |
 
-rectangle "Single Process (ServerMain)" {
-  component [Login Handler] as LH
-  component [Lobby / Character Handler] as CH
-  component [Session / World Handler] as SH
-  component [Zone Population Tracker\n(in-memory)] as ZT
-  database [PostgreSQL] as DB
-}
+The gateway **never deserializes** the `payload`. All routing decisions are based solely on the
+`flag` and `metadata` fields.
 
-Client --> LH : QUIC — LOGIN
-Client --> CH : QUIC — CHAR_LIST\nCHAR_CREATE\nCHAR_SELECT\nCHAR_DELETE
-Client --> SH : QUIC — PLAY\nPING\nLOGOUT
-LH --> DB
-CH --> DB
-SH --> DB
-SH --> ZT
-@enduml
-```
+### 3.2 Serialization: Apache Fory
+
+Application DTOs are serialized using [Apache Fory](https://fory.apache.org/) via
+[`ForySerializer`](../common/network/src/main/java/catalyst/common/network/ForySerializer.java).
+Class registration is not enforced (`requireClassRegistration(false)`), which keeps the
+configuration simple while the DTO surface is still evolving.
+
+All shared DTOs live in the `common-dto` module and implement the `GatewayMessage` marker
+interface which declares their routing `flag`.
+
+### 3.3 Gateway Control Messages
+
+State transitions on the gateway are triggered by a dedicated
+[`GatewayControlMessage`](../common/network/src/main/java/catalyst/common/network/GatewayControlMessage.java)
+record that backend services return alongside their response DTO:
+
+| Command | Sent by | Effect on Gateway |
+|---|---|---|
+| `auth_success` | Login Service | Transitions connection: `UNAUTHENTICATED` → `AUTHENTICATED` |
+| `play_success` | Lobby Service | Transitions connection: `AUTHENTICATED` → `PLAYING`, binds world server |
+
+The gateway swallows `FLAG_CONTROL` frames — they are never forwarded to the client.
+
+> [!NOTE]
+> A `logout_success` command to transition `PLAYING` → `AUTHENTICATED` on logout is not yet
+> implemented. Tracked in [`task-security-gateway-logout-state.md`](tasks/task-security-gateway-logout-state.md).
 
 ---
 
-## 4. Target Multi-Server Topology
+## 4. Gateway Connection State Machine
+
+The gateway tracks per-connection state via a `ConnectionState` channel attribute on the parent
+`QuicChannel`. State is set exclusively by the gateway based on control messages from trusted
+backend services — the client has no ability to influence it.
 
 ```plantuml
-@startuml multiserver
+@startuml states
 !theme plain
 skinparam defaultFontSize 13
-skinparam linetype polyline
 
-actor Client
+[*] --> UNAUTHENTICATED : QUIC connect
 
-rectangle "gateway" as GW {
-  component [QUIC Listener\n(external)] as QL
-  component [Auth Token Validator] as ATV
-  component [Phase Router] as PR
-  component [Session Route Table\nsessionId → WorldServer] as RT
-}
+UNAUTHENTICATED --> UNAUTHENTICATED : any request\n(force-routed to Login)
+UNAUTHENTICATED --> AUTHENTICATED : FLAG_CONTROL auth_success
 
-rectangle "login" as LS {
-  component [Login Handler] as LH
-}
+AUTHENTICATED --> AUTHENTICATED : FLAG_LOGIN / FLAG_LOBBY requests
+AUTHENTICATED --> PLAYING : FLAG_CONTROL play_success\n(binds world server to channel)
 
-rectangle "lobby" as LBS {
-  component [Character Handler] as CH
-  component [World Selector] as WSel
-}
-
-rectangle "world (A)" as WA {
-  component [Session Handler] as SHA
-  component [Zone Manager] as ZMA
-  component [Entity Tracker] as ETA
-}
-
-rectangle "world (B)" as WB {
-  component [Session Handler] as SHB
-  component [Zone Manager] as ZMB
-  component [Entity Tracker] as ETB
-}
-
-database "PostgreSQL\n(accounts, characters)" as DB
-database "World State\n(sessions, zones)" as WST
-
-Client --> QL : QUIC / TLS 1.3
-QL --> ATV
-ATV --> PR
-PR --> LH : QUIC / mTLS — LOGIN
-PR --> CH : QUIC / mTLS — CHAR_*
-CH --> WSel : on PLAY
-WSel --> RT : assign world
-PR --> SHA : QUIC / mTLS — PING / LOGOUT\n(world A sessions)
-PR --> SHB : QUIC / mTLS — PING / LOGOUT\n(world B sessions)
-LH --> DB
-CH --> DB
-SHA --> WST
-SHB --> WST
+PLAYING --> PLAYING : FLAG_WORLD requests\n(routed to bound world server)
 @enduml
 ```
+
+### Routing Rules by State
+
+| Connection State | FLAG_LOGIN | FLAG_LOBBY | FLAG_WORLD |
+|---|---|---|---|
+| `UNAUTHENTICATED` | ✅ (force-routed) | ❌ rejected | ❌ rejected |
+| `AUTHENTICATED` | ✅ | ✅ | ❌ rejected |
+| `PLAYING` | ❌ rejected | ❌ rejected | ✅ → bound world server |
 
 ---
 
@@ -235,88 +216,63 @@ participant "Login Service" as LS
 participant "Lobby Service" as LBS
 participant "World Server" as WS
 
-== Authentication Phase ==
-C -> GW : QUIC connect (UDP) + TLS 1.3
-GW --> C : TLS handshake complete
-C -> GW : stream(0): LOGIN {username, password}
-GW -> LS : QUIC/mTLS — LOGIN (authToken not yet issued)
-LS -> LS : Argon2id verify
-LS --> GW : LOGIN_OK {authToken, accountId}
-GW --> C : LOGIN_OK {authToken, accountId}
+== Authentication ==
+C -> GW : QUIC connect (UDP :35555) + TLS handshake
+GW -> GW : ConnectionState = UNAUTHENTICATED
+C -> GW : stream(0): GatewayFrame(FLAG_LOGIN, LoginRequest)
+GW -> LS : GatewayFrame(FLAG_LOGIN, LoginRequest)
+LS -> LS : verify credentials (Virtual Thread)
+LS --> GW : GatewayFrame(FLAG_CONTROL, GatewayControlMessage("auth_success"))
+GW -> GW : ConnectionState = AUTHENTICATED
+LS --> GW : GatewayFrame(FLAG_LOGIN, LoginResponse)
+GW --> C : GatewayFrame(FLAG_LOGIN, LoginResponse)
 
-== Character Selection Phase ==
-C -> GW : stream(1): CHAR_LIST {authToken}
-GW -> GW : validate authToken
-GW -> LBS : QUIC/mTLS — CHAR_LIST
-LBS --> GW : CHAR_LIST_OK {characters}
-GW --> C : CHAR_LIST_OK
+== Character Selection ==
+C -> GW : stream(1): GatewayFrame(FLAG_LOBBY, CharListRequest)
+GW -> LBS : GatewayFrame(FLAG_LOBBY, CharListRequest)
+LBS --> GW : GatewayFrame(FLAG_LOBBY, CharListResponse)
+GW --> C : GatewayFrame(FLAG_LOBBY, CharListResponse)
 
-C -> GW : stream(2): CHAR_SELECT {authToken, characterId}
-GW -> LBS : QUIC/mTLS — CHAR_SELECT
-LBS --> GW : CHAR_SELECT_OK {identity, position}
-GW --> C : CHAR_SELECT_OK
-
-== Play Phase ==
-C -> GW : stream(3): PLAY {authToken, characterId}
-GW -> LBS : QUIC/mTLS — PLAY
-LBS -> WS : QUIC/mTLS — assign_session
-WS --> LBS : session created
-LBS --> GW : PLAY_OK {sessionId, zoneId, position}
-GW -> GW : store sessionId → WorldServer(A)
-GW --> C : PLAY_OK {sessionId, zoneId}
+== Play ==
+C -> GW : stream(N): GatewayFrame(FLAG_LOBBY, PlayRequest)
+GW -> LBS : GatewayFrame(FLAG_LOBBY, PlayRequest)
+LBS -> LBS : create session (Virtual Thread)
+LBS --> GW : GatewayFrame(FLAG_CONTROL, GatewayControlMessage("play_success", sessionId, worldAddr))
+GW -> GW : ConnectionState = PLAYING\nbind channel → World Server
+LBS --> GW : GatewayFrame(FLAG_LOBBY, PlayResponse)
+GW --> C : GatewayFrame(FLAG_LOBBY, PlayResponse)
 
 == Active Session ==
-loop every 5s
-  C -> GW : stream(N): PING {sessionId}
-  GW -> GW : lookup sessionId → WorldServer(A)
-  GW -> WS : QUIC/mTLS — PING
-  WS --> GW : PONG
-  GW --> C : PONG
+loop every 5s (keepalive)
+  C -> GW : stream(M): GatewayFrame(FLAG_WORLD, PingRequest)
+  GW -> WS : GatewayFrame(FLAG_WORLD, PingRequest)
+  WS --> GW : GatewayFrame(FLAG_WORLD, PingResponse)
+  GW --> C : GatewayFrame(FLAG_WORLD, PingResponse)
 end
 
 == Logout ==
-C -> GW : stream(M): LOGOUT {sessionId}
-GW -> WS : QUIC/mTLS — LOGOUT
-WS --> GW : BYE
-GW -> GW : remove sessionId from route table
-GW --> C : BYE
+C -> GW : stream(P): GatewayFrame(FLAG_WORLD, LogoutRequest)
+GW -> WS : GatewayFrame(FLAG_WORLD, LogoutRequest)
+WS --> GW : GatewayFrame(FLAG_WORLD, LogoutResponse)
+GW --> C : GatewayFrame(FLAG_WORLD, LogoutResponse)
 @enduml
 ```
 
 ---
 
-## 6. Message Routing Table
+## 6. QUIC Stream Model
 
-The gateway validates the auth token on every pre-session request, then routes by message type. Post-`PLAY`, session messages are routed by `sessionId` lookup.
+Each request/response pair uses a **dedicated bidirectional QUIC stream** on the persistent
+connection. The same model applies to both the external (client ↔ gateway) and internal
+(gateway ↔ backend) connections.
 
-```plantuml
-@startuml routing
-!theme plain
-skinparam defaultFontSize 13
-
-map "Static Routes (by message type)" as SR {
-  LOGIN => Login Service
-  CHAR_LIST => Lobby Service
-  CHAR_CREATE => Lobby Service
-  CHAR_SELECT => Lobby Service
-  CHAR_DELETE => Lobby Service
-  PLAY => Lobby Service
-}
-
-map "Session Routes (by sessionId lookup)" as SS {
-  PING => World Server
-  LOGOUT => World Server
-  ZONE_CHANGE => World Server
-  ENTITY_UPDATE => World Server
-}
-@enduml
-```
-
----
-
-## 7. QUIC Stream Model
-
-Each logical request/response pair uses a **dedicated bidirectional QUIC stream** on a persistent connection. The same model applies on both the external (client ↔ gateway) and internal (gateway ↔ service) connections.
+**Stream lifecycle:**
+1. Initiator opens a bidirectional stream and writes the `GatewayFrame` request.
+2. Initiator calls `shutdownOutput()` (half-close) to signal end of request.
+3. Receiver reads the frame, processes it, writes the response frame, and calls `shutdownOutput()`.
+4. The `CompletableFuture` on the initiator side completes in `channelRead` when the response
+   frame arrives. The stream is then closed.
+5. The underlying `QuicChannel` connection persists across all streams.
 
 ```plantuml
 @startuml quic_streams
@@ -325,85 +281,85 @@ skinparam defaultFontSize 13
 
 rectangle "External QUIC Connection (persistent, Client ↔ Gateway)" {
   rectangle "stream 0" {
-    component "LOGIN →\n← LOGIN_OK"
+    component "LoginRequest →\n← LoginResponse"
   }
   rectangle "stream 1" {
-    component "CHAR_LIST →\n← CHAR_LIST_OK"
+    component "CharListRequest →\n← CharListResponse"
   }
   rectangle "stream 2..N" {
-    component "CHAR_SELECT / PLAY /\nPING / LOGOUT / ..."
+    component "CharSelect / Play /\nPing / Logout / ..."
   }
 }
 
-rectangle "Internal QUIC Connection (persistent, Gateway ↔ World Server A)" {
+rectangle "Internal QUIC Connection (persistent, Gateway ↔ World Server)" {
   rectangle "stream 0 " {
-    component "PING →\n← PONG"
+    component "PingRequest →\n← PingResponse"
   }
   rectangle "stream 1 " {
-    component "LOGOUT →\n← BYE"
-  }
-  rectangle "stream 2..N " {
-    component "ZONE_CHANGE /\nENTITY_UPDATE / ..."
+    component "LogoutRequest →\n← LogoutResponse"
   }
 }
 @enduml
 ```
 
-**Properties:**
-- One stream per request/response pair — streams are cheap, connections are valuable.
-- Client opens a stream, writes request, shuts down output (half-close).
-- Receiver writes response, shuts down output.
-- Client completes `CompletableFuture` on newline detection in `channelRead`; stream closes.
-- `QuicChannel` connection persists across all requests.
-
 ---
 
-## 8. World Server Zone Assignment
+## 7. Server-Side Concurrency Model
+
+### Login & Lobby Services — Stateless Concurrent Dispatch
+Handlers run on Java Virtual Threads via `StatelessMessageDispatcher`. Each inbound packet is
+immediately offloaded from the Netty EventLoop and executed concurrently. Blocking JDBC calls are
+safe on virtual threads.
+
+### World Service — Stateful Sequential Tick Loop
+The `ZoneMessageDispatcher` runs a **10Hz tick loop (100ms interval)** on a single virtual thread.
+All inbound packets are queued into a `ConcurrentLinkedQueue` by the Netty EventLoop and drained
+sequentially each tick. This prevents race conditions during concurrent entity, inventory, and
+position updates without requiring any explicit locking.
 
 ```plantuml
-@startuml zone_assign
+@startuml dispatch
 !theme plain
 skinparam defaultFontSize 13
 
-participant "Lobby Service" as L
-participant "World Registry" as WR
-participant "World Server A\n(zones 1-100)" as WA
-participant "World Server B\n(zones 101-200)" as WB
+participant "Netty EventLoop" as EL
+participant "ConcurrentLinkedQueue" as Q
+participant "Zone Tick Thread (10Hz)" as TL
+participant "PacketHandler" as H
 
-L -> WR : lookup(zoneId=230)
-WR --> L : WorldServer A (QUIC addr)
-L -> WA : QUIC/mTLS — assign_session\n(accountId, characterId, zoneId=230)
-WA -> WA : joinZone(sessionId, 230)
-WA --> L : PLAY_OK {sessionId}
-L --> L : auth ticket consumed
+EL -> Q : offer(GameCommand) — returns instantly
+note over TL: 100ms tick interval
+TL -> Q : poll() all pending
+Q --> TL : GameCommand(payload, ctx)
+TL -> H : handle(payload)
+H --> TL : writes response via ctx
 @enduml
 ```
 
 ---
 
-## 9. Module Breakdown (Target)
+## 8. Message Routing Table
 
-| Module | Responsibility | External Transport | Internal Transport |
-|---|---|---|---|
-| `gateway` | Client-facing QUIC endpoint, TLS termination, auth token validation, phase routing, session→world route table | QUIC / TLS 1.3 | QUIC / mTLS |
-| `login` | Account auth (Argon2id), auth token issuance | — | QUIC / mTLS |
-| `lobby` | Character CRUD, soft delete, race/job/nation validation, world server assignment on PLAY | — | QUIC / mTLS |
-| `world` | Session lifecycle, zone management, entity tracking, keepalive, movement | — | QUIC / mTLS |
-| `common` | Shared wire codec (`MessageFrame`, `WireCodec`), domain models | — | — |
-| `client` | LWJGL + Dear ImGui desktop client, `QuicGateway` transport | QUIC / TLS 1.3 | — |
+| Flag | Message Types | Routes To |
+|---|---|---|
+| `FLAG_LOGIN` (0x01) | `LoginRequest` | Login Service |
+| `FLAG_LOBBY` (0x02) | `CharListRequest`, `CharCreateRequest`, `CharSelectRequest`, `CharDeleteRequest`, `PlayRequest` | Lobby Service |
+| `FLAG_WORLD` (0x03) | `PingRequest`, `LogoutRequest` | World Server (bound to connection) |
+| `FLAG_CONTROL` (0x80) | `GatewayControlMessage` | Gateway only — swallowed, never forwarded |
 
 ---
 
-## 10. Current vs Target
+## 9. Module Breakdown
 
-| Concern | Milestone 1 (now) | Target |
-|---|---|---|
-| Client endpoint | Single `ServerMain` on UDP :35555 | `gateway` on UDP :35555 |
-| Internal comms | N/A (single process) | QUIC / mTLS between gateway and services |
-| Auth | In `ServerMain` | `login` service |
-| Auth token validation | In `ServerMain` | Once at gateway; not repeated by backend |
-| Character ops | In `ServerMain` | `lobby` service |
-| Session/world | In `ServerMain` | `world` service(s) |
-| Server-to-server auth | N/A | mTLS pinned certs (dev) / cert-manager (k8s) |
-| World scale | Single in-memory map | Multiple `world` instances + world registry |
-| DB | Single PostgreSQL | Accounts/chars DB + world state DB |
+| Module | Responsibility | External Transport | Internal Transport |
+|---|---|---|---|
+| `gateway` | Public QUIC endpoint, TLS termination, stateful connection routing, session→world binding | QUIC / TLS 1.3 (UDP :35555) | QUIC / mTLS |
+| `login-service` | Account authentication (credential verification), auth token issuance | — | QUIC / mTLS (internal :35556) |
+| `lobby-service` | Character CRUD, race/job/nation validation, world server assignment on `PLAY` | — | QUIC / mTLS (internal :35556) |
+| `world-service` | Session lifecycle, zone management, entity tracking, keepalive | — | QUIC / mTLS (internal :35556) |
+| `server-common` | Shared `PacketHandler<T>` interface, `StatelessMessageDispatcher`, `ZoneMessageDispatcher` base contracts | — | — |
+| `common-network` | `GatewayFrame`, `ForySerializer`, `GatewayFrameEncoder/Decoder`, `GatewayControlMessage` | — | — |
+| `common-dto` | All shared request/response DTO records implementing `GatewayMessage` | — | — |
+| `client-network` | `QuicGateway`, `QuicGatewayService`, `KeepAliveService`, `ClientDispatcher` | QUIC / TLS 1.3 | — |
+| `client-application` | State machine (`UnauthenticatedState`, `AuthenticatedState`, `CharacterSelectedState`, `InGameState`) | — | — |
+| `client-engine` | GLFW window lifecycle, OpenGL context, render loop, `TaskSchedulerService` | — | — |

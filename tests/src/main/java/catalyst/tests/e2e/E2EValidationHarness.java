@@ -94,7 +94,7 @@ public final class E2EValidationHarness {
 
             // 6. PING/PONG validation
             System.out.println("\nStep 6: Sending PING/PONG validation...");
-            service.sendAsync(new PingRequest(sessionId));
+            service.sendAsync(new PingRequest());
             
             AtomicReference<PingResponse> pingRespRef = new AtomicReference<>();
             await().atMost(Duration.ofSeconds(5))
@@ -117,7 +117,7 @@ public final class E2EValidationHarness {
 
             // 7. LOGOUT
             System.out.println("\nStep 7: Sending LOGOUT...");
-            var logoutResp = service.request(new LogoutRequest(sessionId), LogoutResponse.class);
+            var logoutResp = service.request(new LogoutRequest(), LogoutResponse.class);
             System.out.println("Logout Response: " + logoutResp);
             if (logoutResp.sessionId() == null) {
                 throw new AssertionError("LOGOUT failed!");

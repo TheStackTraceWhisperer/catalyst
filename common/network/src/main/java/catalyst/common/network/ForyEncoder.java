@@ -15,6 +15,6 @@ public final class ForyEncoder extends MessageToMessageEncoder<GatewayMessage> {
     @Override
     protected void encode(ChannelHandlerContext ctx, GatewayMessage msg, List<Object> out) throws Exception {
         log.debug("Encoding message: class={} flag={}", msg.getClass().getSimpleName(), msg.gatewayFlag());
-        out.add(new GatewayFrame(msg.gatewayFlag(), ForySerializer.serialize(msg)));
+        out.add(new GatewayFrame(msg.gatewayFlag(), "", ForySerializer.serialize(msg)));
     }
 }

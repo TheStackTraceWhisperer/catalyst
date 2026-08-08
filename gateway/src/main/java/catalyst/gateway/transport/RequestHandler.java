@@ -18,13 +18,13 @@ import lombok.extern.slf4j.Slf4j;
 public final class RequestHandler extends ChannelInboundHandlerAdapter {
     public static final AttributeKey<ConnectionState> STATE_KEY = AttributeKey.valueOf("gateway.state");
     public static final AttributeKey<QuicGatewayClient> WORLD_CLIENT_KEY = AttributeKey.valueOf("gateway.worldClient");
+    public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("gateway.sessionId");
 
     private final GatewayProperties props;
     private final QuicGatewayClient loginClient;
     private final QuicGatewayClient lobbyClient;
     private final QuicGatewayClient worldClient;
     private final Map<BackendAddress, QuicGatewayClient> dynamicWorldClients;
-
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
@@ -45,13 +45,22 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         QuicGatewayClient client = resolveTargetClient(parentChannel, state, requestFrame);
         if (client == null) {
             log.warn("No target client resolved for request flag={} in state={}", requestFrame.flag(), state);
-            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, new byte[0]))
+            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "", new byte[0]))
                 .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
             return;
         }
 
+        // Inject verified sessionId if routing a FLAG_WORLD frame
+        GatewayFrame frameToSend = requestFrame;
+        if (requestFrame.flag() == GatewayFrame.FLAG_WORLD) {
+            String sessionId = parentChannel.attr(SESSION_ID_KEY).get();
+            if (sessionId != null) {
+                frameToSend = new GatewayFrame(requestFrame.flag(), sessionId, requestFrame.payload());
+            }
+        }
+
         // Forward request asynchronously to backend client (Zero Blocking on EventLoop)
-        client.requestAsync(requestFrame, controlMsg -> {
+        client.requestAsync(frameToSend, controlMsg -> {
             handleStateTransitions(parentChannel, controlMsg);
         })
             .thenAccept(responseFrame -> {
@@ -74,7 +83,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendBackendUnavailable(ChannelHandlerContext ctx) {
-        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, new byte[0]))
+        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "", new byte[0]))
             .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 
@@ -117,6 +126,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 log.info("Client play success, sessionId={}, transitioning to PLAYING", sessionId);
 
                 parentChannel.attr(STATE_KEY).set(ConnectionState.PLAYING);
+                parentChannel.attr(SESSION_ID_KEY).set(sessionId);
 
                 BackendAddress address;
                 if (worldAddr == null || "DEFAULT".equals(worldAddr) || worldAddr.isBlank()) {
@@ -146,6 +156,12 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                     });
                 }
                 parentChannel.attr(WORLD_CLIENT_KEY).set(targetClient);
+            }
+            case "logout_success" -> {
+                log.info("Client logged out, transitioning to AUTHENTICATED");
+                parentChannel.attr(STATE_KEY).set(ConnectionState.AUTHENTICATED);
+                parentChannel.attr(WORLD_CLIENT_KEY).set(null);
+                parentChannel.attr(SESSION_ID_KEY).set(null);
             }
         }
     }

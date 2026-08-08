@@ -36,14 +36,14 @@ public final class QuicServerTransport {
     static final String PROTOCOL = "catalyst-1";
 
     private final ServerProperties props;
-    private Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher = req -> {
+    private catalyst.server.common.network.WorldRequestDispatcher dispatcher = (req, sessionId) -> {
         log.error("Dispatcher not set for request: {}", req.getClass().getSimpleName());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
     };
     private EventLoopGroup group;
     private Channel bindChannel;
 
-    public void setDispatcher(Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher) {
+    public void setDispatcher(catalyst.server.common.network.WorldRequestDispatcher dispatcher) {
         this.dispatcher = dispatcher;
     }
 
@@ -109,9 +109,9 @@ public final class QuicServerTransport {
     }
 
     private static final class RequestHandler extends ChannelInboundHandlerAdapter {
-        private final Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher;
+        private final catalyst.server.common.network.WorldRequestDispatcher dispatcher;
 
-        RequestHandler(Function<Object, java.util.concurrent.CompletableFuture<Object>> dispatcher) {
+        RequestHandler(catalyst.server.common.network.WorldRequestDispatcher dispatcher) {
             this.dispatcher = dispatcher;
         }
 
@@ -120,8 +120,11 @@ public final class QuicServerTransport {
             try {
                 // msg is already a decoded domain object (e.g., LoginRequest)
                 log.debug("Received request: {}", msg.getClass().getSimpleName());
+
+                // Retrieve sessionId injected by ForyDecoder
+                String sessionId = ctx.channel().attr(io.netty.util.AttributeKey.<String>valueOf("gateway.sessionId")).get();
                 
-                dispatcher.apply(msg)
+                dispatcher.dispatch(msg, sessionId)
                     .thenAccept(response -> {
                         if (response != null) {
                             if (response instanceof Object[] array) {

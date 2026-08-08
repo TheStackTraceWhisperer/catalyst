@@ -11,7 +11,14 @@ public final class GatewayFrameEncoder extends MessageToByteEncoder<GatewayFrame
         // 1. Write message flag
         out.writeByte(msg.flag());
 
-        // 2. Write payload length & bytes
+        // 2. Write sessionId length & bytes
+        byte[] sessionBytes = msg.getSessionIdBytes();
+        out.writeShort(sessionBytes.length);
+        if (sessionBytes.length > 0) {
+            out.writeBytes(sessionBytes);
+        }
+
+        // 3. Write payload length & bytes
         byte[] payload = msg.payload();
         if (payload == null) {
             out.writeInt(0);

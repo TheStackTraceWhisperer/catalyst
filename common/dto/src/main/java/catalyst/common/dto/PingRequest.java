@@ -3,9 +3,7 @@ package catalyst.common.dto;
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
 
-public record PingRequest(
-    String sessionId
-) implements GatewayMessage {
+public record PingRequest() implements GatewayMessage {
 
     @Override
     public byte gatewayFlag() {

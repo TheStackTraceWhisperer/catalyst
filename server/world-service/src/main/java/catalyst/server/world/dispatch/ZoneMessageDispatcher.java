@@ -1,6 +1,7 @@
 package catalyst.server.world.dispatch;
 
 import catalyst.server.common.network.PacketHandler;
+import catalyst.server.common.network.SessionContext;
 import io.micronaut.context.BeanProvider;
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Singleton;
@@ -31,7 +32,7 @@ public class ZoneMessageDispatcher implements AutoCloseable {
     private Thread tickThread;
     private volatile boolean running = true;
 
-    private record QueuedCommand(Object payload, CompletableFuture<Object> future) {}
+    private record QueuedCommand(Object payload, String sessionId, CompletableFuture<Object> future) {}
 
     @PostConstruct
     public void initialize() {
@@ -46,9 +47,9 @@ public class ZoneMessageDispatcher implements AutoCloseable {
      * Enqueues the request payload and returns a CompletableFuture
      * to be completed during the next tick processing.
      */
-    public CompletableFuture<Object> dispatchAsync(Object payload) {
+    public CompletableFuture<Object> dispatchAsync(Object payload, String sessionId) {
         CompletableFuture<Object> future = new CompletableFuture<>();
-        zoneQueue.offer(new QueuedCommand(payload, future));
+        zoneQueue.offer(new QueuedCommand(payload, sessionId, future));
         return future;
     }
 
@@ -89,16 +90,20 @@ public class ZoneMessageDispatcher implements AutoCloseable {
         QueuedCommand cmd;
         while ((cmd = zoneQueue.poll()) != null) {
             Object payload = cmd.payload();
+            String sessionId = cmd.sessionId();
             CompletableFuture<Object> future = cmd.future();
             PacketHandler<?> handler = handlerRegistry.get(payload.getClass());
             
             if (handler != null) {
                 try {
+                    SessionContext.setSessionId(sessionId);
                     Object response = invokeHandler(handler, payload);
                     future.complete(response);
                 } catch (Throwable t) {
                     log.error("Error processing packet: {}", payload.getClass().getSimpleName(), t);
                     future.completeExceptionally(t);
+                } finally {
+                    SessionContext.clear();
                 }
             } else {
                 log.warn("Dropped packet! No handler registered for: {}", payload.getClass().getName());

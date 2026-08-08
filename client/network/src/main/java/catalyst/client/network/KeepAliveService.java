@@ -85,7 +85,7 @@ public class KeepAliveService {
     public void sendPing() {
         lastPingSentTimeMs = System.currentTimeMillis();
         try {
-            gateway.sendAsync(new PingRequest(sessionId));
+            gateway.sendAsync(new PingRequest());
         } catch (Exception e) {
             status = "failed";
             log.warn("PING_ERR {}", e.getMessage());

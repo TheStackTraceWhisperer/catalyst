@@ -97,7 +97,7 @@ public class InGameState implements ApplicationState {
         if (sessionClosed) return;
         sessionClosed = true;
         try {
-            LogoutResponse resp = gateway.request(new LogoutRequest(sessionId), LogoutResponse.class);
+            LogoutResponse resp = gateway.request(new LogoutRequest(), LogoutResponse.class);
             debugLog.log("LOGOUT_OK session=" + resp.sessionId());
         } catch (Exception e) {
             debugLog.log("LOGOUT_ERR " + e.getMessage());

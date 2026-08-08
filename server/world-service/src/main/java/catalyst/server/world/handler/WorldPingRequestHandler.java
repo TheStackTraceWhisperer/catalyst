@@ -4,6 +4,7 @@ import catalyst.common.dto.PingRequest;
 import catalyst.common.dto.PingResponse;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
+import catalyst.server.common.network.SessionContext;
 import catalyst.server.world.repository.SessionRepository;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
@@ -23,12 +24,8 @@ public class WorldPingRequestHandler implements PacketHandler<PingRequest> {
     }
 
     @Override
-    public PingResponse handle(PingRequest req) {
-        if (req == null) {
-            return new PingResponse(null, null, ResponseCode.CONFLICT, "Invalid ping request");
-        }
-
-        String sessionId = normalize(req.sessionId());
+    public Object handle(PingRequest req) {
+        String sessionId = normalize(SessionContext.getSessionId());
         if (sessionId.isBlank()) {
             return new PingResponse(null, null, ResponseCode.CONFLICT, "Missing sessionId");
         }

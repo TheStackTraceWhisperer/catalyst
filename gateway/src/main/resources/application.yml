@@ -8,18 +8,15 @@ catalyst:
   gateway:
     port: 35555
     backends:
-      login:
-        flag: 1
+      LOGIN:
         policy: UNAUTHENTICATED
         host: localhost
         port: 35000
-      lobby:
-        flag: 2
+      LOBBY:
         policy: AUTHENTICATED
         host: localhost
         port: 35001
-      world:
-        flag: 3
+      WORLD:
         policy: SESSION_BOUND
         host: localhost
         port: 35002

@@ -2,6 +2,7 @@ package catalyst.gateway.transport;
 
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.common.network.GatewayFrame;
+import catalyst.common.network.ServiceType;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.BackendClient;
 import io.netty.channel.Channel;
@@ -19,10 +20,10 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("gateway.sessionId");
 
     private final GatewayProperties props;
-    private final Map<String, BackendClient> clients;
+    private final Map<ServiceType, BackendClient> clients;
     private final Map<BackendAddress, BackendClient> dynamicWorldClients;
 
-    public RequestHandler(GatewayProperties props, Map<String, BackendClient> clients, Map<BackendAddress, BackendClient> dynamicWorldClients) {
+    public RequestHandler(GatewayProperties props, Map<ServiceType, BackendClient> clients, Map<BackendAddress, BackendClient> dynamicWorldClients) {
         this.props = props;
         this.clients = clients;
         this.dynamicWorldClients = dynamicWorldClients;
@@ -55,7 +56,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         // Inject verified sessionId if routing to a SESSION_BOUND policy endpoint
         GatewayFrame frameToSend = requestFrame;
         GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag());
-        if (config != null && "SESSION_BOUND".equals(config.getPolicy())) {
+        if (config != null && "SESSION_BOUND".equals(config.policy())) {
             String sessionId = parentChannel.attr(SESSION_ID_KEY).get();
             if (sessionId != null) {
                 frameToSend = new GatewayFrame(requestFrame.flag(), sessionId, requestFrame.payload());
@@ -91,48 +92,40 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private BackendClient resolveTargetClient(Channel parentChannel, SecurityState state, GatewayFrame requestFrame) {
-        GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag());
+        ServiceType type = ServiceType.fromFlag(requestFrame.flag());
+        if (type == null) {
+            log.warn("No ServiceType found for flag: {}", requestFrame.flag());
+            return null;
+        }
+
+        GatewayProperties.BackendConfig config = props.getBackends().get(type);
         if (config == null) {
-            log.warn("No backend configured for flag: {}", requestFrame.flag());
+            log.warn("No backend configured for service: {}", type);
             return null;
         }
 
         // Parse policy state requirement
         SecurityState requiredState;
         try {
-            requiredState = SecurityState.valueOf(config.getPolicy());
+            requiredState = SecurityState.valueOf(config.policy());
         } catch (IllegalArgumentException e) {
-            log.error("Invalid security policy '{}' configured for flag {}", config.getPolicy(), requestFrame.flag());
+            log.error("Invalid security policy '{}' configured for service {}", config.policy(), type);
             return null;
         }
 
         // Enforce the 1:1 security state comparison
         if (state.level() < requiredState.level()) {
-            log.warn("Access denied: request flag {} requires state >= {}, but client is in state {}", 
-                requestFrame.flag(), requiredState, state);
-            return null;
-        }
-
-        String key = getBackendKeyByFlag(requestFrame.flag());
-        if (key == null) {
+            log.warn("Access denied: request to service {} requires state >= {}, but client is in state {}", 
+                type, requiredState, state);
             return null;
         }
 
         if (requiredState == SecurityState.SESSION_BOUND) {
             BackendClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
-            return world != null ? world : clients.get(key);
+            return world != null ? world : clients.get(type);
         }
 
-        return clients.get(key);
-    }
-
-    private String getBackendKeyByFlag(byte flag) {
-        for (Map.Entry<String, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
-            if (entry.getValue().getFlag() == flag) {
-                return entry.getKey();
-            }
-        }
-        return null;
+        return clients.get(type);
     }
 
     private void handleStateTransitions(Channel parentChannel, GatewayControlMessage gcm) {
@@ -157,11 +150,11 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 BackendAddress address;
                 if (worldAddr == null || "DEFAULT".equals(worldAddr) || worldAddr.isBlank()) {
                     // Fall back to default world configured in properties
-                    GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
+                    GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
                     if (worldConfig != null) {
-                        address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
+                        address = new BackendAddress(worldConfig.host(), worldConfig.port());
                     } else {
-                        log.error("No default world backend configured under key 'world'");
+                        log.error("No default world backend configured under key 'WORLD'");
                         return;
                     }
                 } else {
@@ -171,20 +164,20 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                             address = new BackendAddress(parts[0], Integer.parseInt(parts[1]));
                         } catch (NumberFormatException e) {
                             log.warn("Invalid worldAddress format '{}', using default", worldAddr);
-                            GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
-                            address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
+                            GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
+                            address = new BackendAddress(worldConfig.host(), worldConfig.port());
                         }
                     } else {
-                        GatewayProperties.BackendConfig worldConfig = props.getBackends().get("world");
-                        address = new BackendAddress(worldConfig.getHost(), worldConfig.getPort());
+                        GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
+                        address = new BackendAddress(worldConfig.host(), worldConfig.port());
                     }
                 }
 
                 // Resolve the specific world server client
                 BackendClient targetClient;
-                GatewayProperties.BackendConfig defaultWorldConfig = props.getBackends().get("world");
-                if (defaultWorldConfig != null && address.host().equals(defaultWorldConfig.getHost()) && address.port() == defaultWorldConfig.getPort()) {
-                    targetClient = clients.get("world");
+                GatewayProperties.BackendConfig defaultWorldConfig = props.getBackends().get(ServiceType.WORLD);
+                if (defaultWorldConfig != null && address.host().equals(defaultWorldConfig.host()) && address.port() == defaultWorldConfig.port()) {
+                    targetClient = clients.get(ServiceType.WORLD);
                 } else {
                     targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
                         log.info("Opening new persistent internal connection to dynamic world backend: {}", key);

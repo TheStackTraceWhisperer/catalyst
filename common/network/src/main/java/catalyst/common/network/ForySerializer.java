@@ -12,6 +12,7 @@ public final class ForySerializer {
 
     private static final ThreadSafeFory FORY = Fory.builder()
         .withLanguage(Language.JAVA)
+      // TODO: Samuel - We are able to use package based registration since the dtos are now in their own packages
         .requireClassRegistration(false)
         .buildThreadSafeFory();
 

@@ -6,6 +6,6 @@ package catalyst.common.network;
  */
 public interface GatewayMessage {
 
-    /** Returns the target routing flag (e.g. GatewayFrame.FLAG_LOGIN). */
+    /** Returns the target routing flag (e.g. 0x01). */
     byte gatewayFlag();
 }

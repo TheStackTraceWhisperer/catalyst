@@ -1,5 +1,6 @@
 package catalyst.gateway;
 
+import catalyst.common.network.ServiceType;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.transport.GatewayServer;
 import io.micronaut.runtime.Micronaut;
@@ -28,10 +29,11 @@ public class GatewayApplication {
     @EventListener
     public void onStartup(StartupEvent event) throws Exception {
         log.info("Gateway starting on port {}", props.getPort());
-        for (Map.Entry<String, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+        for (Map.Entry<ServiceType, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+            ServiceType type = entry.getKey();
             GatewayProperties.BackendConfig config = entry.getValue();
-            log.info("Configured backend path: '{}' -> flag={}, policy={}, destination={}:{}", 
-                entry.getKey(), config.getFlag(), config.getPolicy(), config.getHost(), config.getPort());
+            log.info("Configured backend service: '{}' -> flag={}, policy={}, destination={}:{}", 
+                type, type.flag(), config.policy(), config.host(), config.port());
         }
         
         Thread.ofVirtual().start(() -> {

@@ -1,11 +1,11 @@
 package catalyst.common.dto.world;
 
-import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayMessage;
+import catalyst.common.network.ServiceType;
 
 public interface WorldGatewayMessage extends GatewayMessage {
     @Override
     default byte gatewayFlag() {
-        return GatewayFrame.FLAG_WORLD;
+        return ServiceType.WORLD.flag();
     }
 }

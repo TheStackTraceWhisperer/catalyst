@@ -2,6 +2,7 @@ package catalyst.gateway.transport;
 
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
+import catalyst.common.network.ServiceType;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.BackendClient;
 import io.netty.bootstrap.Bootstrap;
@@ -28,7 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class GatewayServer {
 
     private final GatewayProperties props;
-    private final Map<String, BackendClient> clients = new ConcurrentHashMap<>();
+    private final Map<ServiceType, BackendClient> clients = new ConcurrentHashMap<>();
     private final Map<BackendAddress, BackendClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
     private EventLoopGroup group;
@@ -37,10 +38,11 @@ public final class GatewayServer {
 
     public GatewayServer(GatewayProperties props) {
         this.props = props;
-        for (Map.Entry<String, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+        for (Map.Entry<ServiceType, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
+            ServiceType type = entry.getKey();
             GatewayProperties.BackendConfig config = entry.getValue();
-            log.info("Configuring backend client for '{}' connecting to {}:{}", entry.getKey(), config.getHost(), config.getPort());
-            this.clients.put(entry.getKey(), new BackendClient(config.getHost(), config.getPort()));
+            log.info("Configuring backend client for '{}' connecting to {}:{}", type, config.host(), config.port());
+            this.clients.put(type, new BackendClient(config.host(), config.port()));
         }
     }
 

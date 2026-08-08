@@ -19,7 +19,8 @@ public final class E2EValidationHarness {
         System.out.println("Target: " + host + ":" + port);
 
         catalyst.common.network.ClientDispatcher dispatcher = new catalyst.common.network.ClientDispatcher();
-        try (QuicGatewayService service = new QuicGatewayService(dispatcher)) {
+        catalyst.client.network.QuicGateway gateway = new catalyst.client.network.QuicGateway(dispatcher);
+        try (QuicGatewayService service = new QuicGatewayService(gateway)) {
             // 1. LOGIN
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
             var loginResp = service.request(host, port, new LoginRequest("dev", "dev"), LoginResponse.class);

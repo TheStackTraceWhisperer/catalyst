@@ -1,8 +1,8 @@
 package catalyst.client.network;
 
-import catalyst.common.network.ClientDispatcher;
 import jakarta.inject.Singleton;
 import jakarta.annotation.PreDestroy;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.io.IOException;
@@ -13,15 +13,10 @@ import java.io.IOException;
  */
 @Slf4j
 @Singleton
+@RequiredArgsConstructor
 public class QuicGatewayService implements AutoCloseable {
 
     private final QuicGateway gateway;
-
-
-
-    public QuicGatewayService(ClientDispatcher clientDispatcher) {
-        this.gateway = new QuicGateway(clientDispatcher);
-    }
 
     /**
      * Sends an outbound DTO request to the gateway server and blocks until the typed response is received.

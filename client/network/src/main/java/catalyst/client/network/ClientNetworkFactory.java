@@ -5,8 +5,8 @@ import io.micronaut.context.annotation.Factory;
 import jakarta.inject.Singleton;
 
 /**
- * Micronaut Factory to expose ClientDispatcher as a singleton bean.
- * Keeps ClientDispatcher a dependency-free POJO in common-network.
+ * Micronaut Factory to expose ClientDispatcher and QuicGateway as singleton beans.
+ * Keeps ClientDispatcher and QuicGateway dependency-free POJOs.
  */
 @Factory
 public class ClientNetworkFactory {
@@ -14,5 +14,10 @@ public class ClientNetworkFactory {
     @Singleton
     public ClientDispatcher clientDispatcher() {
         return new ClientDispatcher();
+    }
+
+    @Singleton
+    public QuicGateway quicGateway(ClientDispatcher clientDispatcher) {
+        return new QuicGateway(clientDispatcher);
     }
 }

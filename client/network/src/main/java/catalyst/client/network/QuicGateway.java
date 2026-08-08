@@ -21,6 +21,7 @@ import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -29,7 +30,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @Slf4j
-final class QuicGateway implements AutoCloseable {
+@RequiredArgsConstructor
+public final class QuicGateway implements AutoCloseable {
     static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 
@@ -39,10 +41,6 @@ final class QuicGateway implements AutoCloseable {
     private QuicChannel quicChannel;
     private String connectedHost;
     private int connectedPort;
-
-    public QuicGateway(ClientDispatcher clientDispatcher) {
-        this.clientDispatcher = clientDispatcher;
-    }
 
     synchronized <T> T request(String host, int port, Object request, Class<T> responseType) throws IOException {
         try {

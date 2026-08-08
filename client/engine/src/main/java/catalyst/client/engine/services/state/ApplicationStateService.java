@@ -4,6 +4,7 @@ import catalyst.client.engine.IService;
 import jakarta.inject.Named;
 import jakarta.inject.Provider;
 import jakarta.inject.Singleton;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.Stack;
@@ -11,14 +12,12 @@ import java.util.function.Supplier;
 
 @Slf4j
 @Singleton
+@RequiredArgsConstructor
 public class ApplicationStateService implements IService {
 
+    @Named("initial")
     private final Provider<ApplicationState> initialStateProvider;
     private final Stack<ApplicationState> stack = new Stack<>();
-
-    public ApplicationStateService(@Named("initial") Provider<ApplicationState> initialStateProvider) {
-        this.initialStateProvider = initialStateProvider;
-    }
 
     @Override
     public int executionOrder() { return 100; }

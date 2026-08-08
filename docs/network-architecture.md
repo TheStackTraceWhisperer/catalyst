@@ -135,11 +135,10 @@ Every message on the wire is wrapped in a [`GatewayFrame`](../common/network/src
 | Field | Type | Purpose |
 |---|---|---|
 | `flag` | `byte` | Destination routing (`0x01` Login, `0x02` Lobby, `0x03` World, `0x80` Control) |
-| `metadata` | `String` (UTF-8) | Lightweight routing headers for gateway-internal signals |
 | `payload` | `byte[]` | Fory-serialized application DTO — treated as opaque bytes by the gateway |
 
 The gateway **never deserializes** the `payload`. All routing decisions are based solely on the
-`flag` and `metadata` fields.
+`flag`.
 
 ### 3.2 Serialization: Apache Fory
 

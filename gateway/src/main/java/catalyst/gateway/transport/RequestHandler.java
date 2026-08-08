@@ -45,7 +45,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         QuicGatewayClient client = resolveTargetClient(parentChannel, state, requestFrame);
         if (client == null) {
             log.warn("No target client resolved for request flag={} in state={}", requestFrame.flag(), state);
-            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "error=unauthorized_route", new byte[0]))
+            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, new byte[0]))
                 .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
             return;
         }
@@ -74,7 +74,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendBackendUnavailable(ChannelHandlerContext ctx) {
-        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "error=backend_unavailable", new byte[0]))
+        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, new byte[0]))
             .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 

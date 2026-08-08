@@ -24,18 +24,22 @@ C -> GW: GatewayFrame(flag=FLAG_LOGIN, payload=LoginRequest)
 note over GW: Gateway enforces **UNAUTHENTICATED** state:\nForce routes all traffic to Login Service
 GW -> LS: GatewayFrame(flag=FLAG_LOGIN, payload=LoginRequest)
 activate LS
-LS -> LS: Authenticate Account
-LS --> GW: GatewayFrame(flag=FLAG_LOGIN, metadata="status=auth_success", payload=LoginResponse)
-deactivate LS
+LS -> LS: Authenticate Account (on Virtual Thread)
 
-note over GW: Gateway intercepts **status=auth_success**:\nTransitions **STATE = AUTHENTICATED**
-GW --> C: GatewayFrame(flag=FLAG_LOGIN, metadata="status=auth_success", payload=LoginResponse)
+note over LS: Returns composite response:\n1. GatewayControlMessage\n2. LoginResponse
+LS --> GW: GatewayFrame(flag=FLAG_CONTROL, payload=GatewayControlMessage("auth_success", ...))
+note over GW: Gateway intercepts FLAG_CONTROL:\nTransitions **STATE = AUTHENTICATED**\nSwallows control frame (not forwarded to client)
+
+LS --> GW: GatewayFrame(flag=FLAG_LOGIN, payload=LoginResponse)
+deactivate LS
+GW --> C: GatewayFrame(flag=FLAG_LOGIN, payload=LoginResponse)
 
 == 2. Character Selection Phase ==
 C -> GW: GatewayFrame(flag=FLAG_LOBBY, payload=CharListRequest)
 note over GW: Gateway enforces **AUTHENTICATED** state:\nAllows FLAG_LOGIN or FLAG_LOBBY routing
 GW -> LBS: GatewayFrame(flag=FLAG_LOBBY, payload=CharListRequest)
 activate LBS
+note over LBS: Process on Virtual Thread
 LBS --> GW: GatewayFrame(flag=FLAG_LOBBY, payload=CharListResponse)
 deactivate LBS
 GW --> C: GatewayFrame(flag=FLAG_LOBBY, payload=CharListResponse)
@@ -44,12 +48,15 @@ GW --> C: GatewayFrame(flag=FLAG_LOBBY, payload=CharListResponse)
 C -> GW: GatewayFrame(flag=FLAG_LOBBY, payload=PlayRequest)
 GW -> LBS: GatewayFrame(flag=FLAG_LOBBY, payload=PlayRequest)
 activate LBS
-note over LBS: Create session & assign World Server
-LBS --> GW: GatewayFrame(flag=FLAG_LOBBY, metadata="status=play_success;worldAddress=localhost:35002;sessionId=xyz", payload=PlayResponse)
-deactivate LBS
+note over LBS: Create session & assign World Server (on Virtual Thread)
+note over LBS: Returns composite response:\n1. GatewayControlMessage\n2. PlayResponse
 
-note over GW: Gateway intercepts **status=play_success**:\n1. Resolves/connects to World Client (localhost:35002)\n2. Binds connection to World Client\n3. Transitions **STATE = PLAYING**
-GW --> C: GatewayFrame(flag=FLAG_LOBBY, metadata="status=play_success;...", payload=PlayResponse)
+LBS --> GW: GatewayFrame(flag=FLAG_CONTROL, payload=GatewayControlMessage("play_success", sessionId="xyz", worldAddress="DEFAULT"))
+note over GW: Gateway intercepts FLAG_CONTROL:\n1. Resolves/connects to World Client\n2. Binds connection to World Client\n3. Transitions **STATE = PLAYING**\nSwallows control frame (not forwarded to client)
+
+LBS --> GW: GatewayFrame(flag=FLAG_LOBBY, payload=PlayResponse)
+deactivate LBS
+GW --> C: GatewayFrame(flag=FLAG_LOBBY, payload=PlayResponse)
 
 == 4. Active Session (Direct World Routing) ==
 C -> GW: GatewayFrame(flag=FLAG_WORLD, payload=PingRequest)

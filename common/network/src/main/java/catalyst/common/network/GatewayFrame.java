@@ -7,14 +7,10 @@ import java.nio.charset.StandardCharsets;
  * Allows the Gateway to route packets without deserializing the underlying application objects.
  */
 public record GatewayFrame(
-  // TODO: Samuel - can we use the enum here?
-    byte flag,
-    // TODO: Samuel - Is sessionId really a string? It is a 16-byte UUID, but we are sending it as a UTF-8 string. We could send it as a 16-byte array instead. then remove the explicit getter
+    ServiceType flag,
     String sessionId,
     byte[] payload
 ) {
-    // Flag definitions
-    public static final byte FLAG_CONTROL = (byte) 0x80;
 
     public byte[] getSessionIdBytes() {
         if (sessionId == null || sessionId.isEmpty()) {

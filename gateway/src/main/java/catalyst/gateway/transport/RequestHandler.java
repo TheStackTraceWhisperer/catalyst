@@ -48,14 +48,14 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
         BackendClient client = resolveTargetClient(parentChannel, state, requestFrame);
         if (client == null) {
             log.warn("No target client resolved for request flag={} in state={}", requestFrame.flag(), state);
-            ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "", new byte[0]))
+            ctx.writeAndFlush(new GatewayFrame(ServiceType.CONTROL, "", new byte[0]))
                 .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
             return;
         }
 
         // Inject verified sessionId if routing to a SESSION_BOUND policy endpoint
         GatewayFrame frameToSend = requestFrame;
-        GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag());
+        GatewayProperties.BackendConfig config = props.getBackendByFlag(requestFrame.flag().flag());
         if (config != null && "SESSION_BOUND".equals(config.policy())) {
             String sessionId = parentChannel.attr(SESSION_ID_KEY).get();
             if (sessionId != null) {
@@ -87,18 +87,18 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     }
 
     private void sendBackendUnavailable(ChannelHandlerContext ctx) {
-        ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "", new byte[0]))
+        ctx.writeAndFlush(new GatewayFrame(ServiceType.CONTROL, "", new byte[0]))
             .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 
     private BackendClient resolveTargetClient(Channel parentChannel, SecurityState state, GatewayFrame requestFrame) {
-        ServiceType type = ServiceType.fromFlag(requestFrame.flag());
+        ServiceType type = requestFrame.flag();
         if (type == null) {
             log.warn("No ServiceType found for flag: {}", requestFrame.flag());
             return null;
         }
 
-        GatewayProperties.BackendConfig config = props.getBackends().get(type);
+        GatewayProperties.BackendConfig config = props.getBackendByFlag(type.flag());
         if (config == null) {
             log.warn("No backend configured for service: {}", type);
             return null;
@@ -122,7 +122,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
 
         if (requiredState == SecurityState.SESSION_BOUND) {
             BackendClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
-            return world != null ? world : clients.get(type);
+            return world;
         }
 
         return clients.get(type);
@@ -147,43 +147,33 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 parentChannel.attr(STATE_KEY).set(SecurityState.SESSION_BOUND);
                 parentChannel.attr(SESSION_ID_KEY).set(sessionId);
 
-                BackendAddress address;
-                if (worldAddr == null || "DEFAULT".equals(worldAddr) || worldAddr.isBlank()) {
-                    // Fall back to default world configured in properties
-                    GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
-                    if (worldConfig != null) {
-                        address = new BackendAddress(worldConfig.host(), worldConfig.port());
-                    } else {
-                        log.error("No default world backend configured under key 'WORLD'");
-                        return;
-                    }
-                } else {
-                    String[] parts = worldAddr.split(":", 2);
-                    if (parts.length == 2) {
-                        try {
-                            address = new BackendAddress(parts[0], Integer.parseInt(parts[1]));
-                        } catch (NumberFormatException e) {
-                            log.warn("Invalid worldAddress format '{}', using default", worldAddr);
-                            GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
-                            address = new BackendAddress(worldConfig.host(), worldConfig.port());
-                        }
-                    } else {
-                        GatewayProperties.BackendConfig worldConfig = props.getBackends().get(ServiceType.WORLD);
-                        address = new BackendAddress(worldConfig.host(), worldConfig.port());
-                    }
+                if (worldAddr == null || worldAddr.isBlank() || "DEFAULT".equals(worldAddr)) {
+                    log.error("play_success control message has no valid worldAddress specified!");
+                    parentChannel.close();
+                    return;
                 }
 
-                // Resolve the specific world server client
-                BackendClient targetClient;
-                GatewayProperties.BackendConfig defaultWorldConfig = props.getBackends().get(ServiceType.WORLD);
-                if (defaultWorldConfig != null && address.host().equals(defaultWorldConfig.host()) && address.port() == defaultWorldConfig.port()) {
-                    targetClient = clients.get(ServiceType.WORLD);
-                } else {
-                    targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
-                        log.info("Opening new persistent internal connection to dynamic world backend: {}", key);
-                        return new BackendClient(key.host(), key.port());
-                    });
+                String[] parts = worldAddr.split(":", 2);
+                if (parts.length != 2) {
+                    log.error("Invalid worldAddress format specified: '{}'", worldAddr);
+                    parentChannel.close();
+                    return;
                 }
+
+                BackendAddress address;
+                try {
+                    address = new BackendAddress(parts[0], Integer.parseInt(parts[1]));
+                } catch (NumberFormatException e) {
+                    log.error("Invalid port in worldAddress '{}'", worldAddr);
+                    parentChannel.close();
+                    return;
+                }
+
+                // Resolve the specific world server client dynamically
+                BackendClient targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
+                    log.info("Opening new persistent internal connection to dynamic world backend: {}", key);
+                    return new BackendClient(key.host(), key.port());
+                });
                 parentChannel.attr(WORLD_CLIENT_KEY).set(targetClient);
             }
             case "logout_success" -> {

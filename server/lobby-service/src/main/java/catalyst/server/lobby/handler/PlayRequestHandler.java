@@ -69,7 +69,7 @@ public class PlayRequestHandler implements PacketHandler<PlayRequest> {
 
             // Return both the control message for the gateway and the play response for the client
             return new Object[] {
-                new GatewayControlMessage("play_success", newSessionId, "DEFAULT"),
+                new GatewayControlMessage("play_success", newSessionId, "world-service-" + id.currentZoneId() + ":35556"),
                 playResponse
             };
         } catch (SQLException e) {

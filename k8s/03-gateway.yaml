@@ -70,9 +70,7 @@ spec:
               value: "35556"
             - name: CATALYST_GATEWAY_BACKENDS_LOBBY_POLICY
               value: "AUTHENTICATED"
-            - name: CATALYST_GATEWAY_BACKENDS_WORLD_HOST
+            - name: CATALYST_GATEWAY_DEFAULT_WORLD_HOST
               value: "world-service"
-            - name: CATALYST_GATEWAY_BACKENDS_WORLD_PORT
+            - name: CATALYST_GATEWAY_DEFAULT_WORLD_PORT
               value: "35556"
-            - name: CATALYST_GATEWAY_BACKENDS_WORLD_POLICY
-              value: "SESSION_BOUND"

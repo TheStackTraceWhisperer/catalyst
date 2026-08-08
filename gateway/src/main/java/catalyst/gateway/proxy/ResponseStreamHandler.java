@@ -3,6 +3,7 @@ package catalyst.gateway.proxy;
 import catalyst.common.network.ForySerializer;
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.common.network.GatewayFrame;
+import catalyst.common.network.ServiceType;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import java.io.IOException;
@@ -12,7 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 
 /**
  * Handles incoming packets from the backend stream.
- * Swallows FLAG_CONTROL messages and triggers the state callback,
+ * Swallows CONTROL messages and triggers the state callback,
  * then completes the client future when the final game response arrives.
  */
 @Slf4j
@@ -28,7 +29,7 @@ public final class ResponseStreamHandler extends ChannelInboundHandlerAdapter {
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
         if (msg instanceof GatewayFrame frame) {
-            if (frame.flag() == GatewayFrame.FLAG_CONTROL) {
+            if (frame.flag() == ServiceType.CONTROL) {
                 try {
                     Object controlObj = ForySerializer.deserialize(frame.payload());
                     if (controlObj instanceof GatewayControlMessage gcm) {

@@ -114,7 +114,95 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: world-service
+  name: world-service-230
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-231
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-232
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-233
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-234
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-235
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-238
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-239
+spec:
+  ports:
+    - port: 35556
+      protocol: UDP
+  selector:
+    app: world-service
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: world-service-240
 spec:
   ports:
     - port: 35556

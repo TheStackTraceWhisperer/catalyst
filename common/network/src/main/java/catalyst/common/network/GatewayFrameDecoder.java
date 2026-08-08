@@ -56,6 +56,11 @@ public final class GatewayFrameDecoder extends ByteToMessageDecoder {
         byte[] payload = new byte[payloadLen];
         in.readBytes(payload);
 
-        out.add(new GatewayFrame(flag, sessionId, payload));
+        ServiceType type = ServiceType.fromFlag(flag);
+        if (type == null) {
+            throw new IllegalArgumentException("Unknown routing flag: " + flag);
+        }
+
+        out.add(new GatewayFrame(type, sessionId, payload));
     }
 }

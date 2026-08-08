@@ -7,6 +7,8 @@ micronaut:
 catalyst:
   gateway:
     port: 35555
+    default-world-host: localhost
+    default-world-port: 35002
     backends:
       LOGIN:
         policy: UNAUTHENTICATED
@@ -16,10 +18,6 @@ catalyst:
         policy: AUTHENTICATED
         host: localhost
         port: 35001
-      WORLD:
-        policy: SESSION_BOUND
-        host: localhost
-        port: 35002
 
 endpoints:
   health:

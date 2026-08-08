@@ -3,7 +3,8 @@ package catalyst.common.network;
 public enum ServiceType {
     LOGIN((byte) 0x01),
     LOBBY((byte) 0x02),
-    WORLD((byte) 0x03);
+    WORLD((byte) 0x03),
+    CONTROL((byte) 0x80);
 
     private final byte flag;
 

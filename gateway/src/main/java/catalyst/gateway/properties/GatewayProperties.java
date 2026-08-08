@@ -17,6 +17,9 @@ public interface GatewayProperties {
 
     default BackendConfig getBackendByFlag(byte flag) {
         ServiceType type = ServiceType.fromFlag(flag);
+        if (type == ServiceType.WORLD) {
+            return new BackendConfig("SESSION_BOUND", "", 0);
+        }
         if (type == null || getBackends() == null) {
             return null;
         }

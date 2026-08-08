@@ -27,14 +27,10 @@ public class KeepAliveService {
     @Getter private volatile long lastRttMs = -1;
     @Getter private volatile Instant lastOkAt = null;
 
-    private String host;
-    private int port;
     private String sessionId;
     private volatile long lastPingSentTimeMs;
 
-    public void start(String host, int port, String sessionId, long intervalMs) {
-        this.host = host;
-        this.port = port;
+    public void start(String sessionId, long intervalMs) {
         this.sessionId = sessionId;
         this.status = "connected";
         long interval = Math.max(250L, intervalMs);
@@ -89,7 +85,7 @@ public class KeepAliveService {
     public void sendPing() {
         lastPingSentTimeMs = System.currentTimeMillis();
         try {
-            gateway.sendAsync(host, port, new PingRequest(sessionId));
+            gateway.sendAsync(new PingRequest(sessionId));
         } catch (Exception e) {
             status = "failed";
             log.warn("PING_ERR {}", e.getMessage());

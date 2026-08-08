@@ -26,15 +26,13 @@ public class InGameState implements ApplicationState {
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
-    private String host, authToken, accountId, sessionId, characterId, characterName;
-    private int    port, currentZoneId;
+    private String authToken, accountId, sessionId, characterId, characterName;
+    private int    currentZoneId;
     private long   keepaliveIntervalMs;
     private boolean sessionClosed;
 
-    public void init(String host, int port, String authToken, String accountId,
+    public void init(String authToken, String accountId,
                      String sessionId, String characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
-        this.host = host;
-        this.port = port;
         this.authToken = authToken;
         this.accountId = accountId;
         this.sessionId = sessionId;
@@ -49,7 +47,7 @@ public class InGameState implements ApplicationState {
 
     @Override
     public void onEnter() {
-        keepAlive.start(host, port, sessionId, keepaliveIntervalMs);
+        keepAlive.start(sessionId, keepaliveIntervalMs);
     }
 
     @Override
@@ -86,7 +84,7 @@ public class InGameState implements ApplicationState {
     private void doCharacterSelect() {
         closeSession();
         CharacterSelectedState next = selectedProvider.get();
-        next.init(host, port, authToken, accountId, characterId, characterName, currentZoneId);
+        next.init(authToken, accountId, characterId, characterName, currentZoneId);
         stateService.changeState(() -> next);
     }
 
@@ -99,7 +97,7 @@ public class InGameState implements ApplicationState {
         if (sessionClosed) return;
         sessionClosed = true;
         try {
-            LogoutResponse resp = gateway.request(host, port, new LogoutRequest(sessionId), LogoutResponse.class);
+            LogoutResponse resp = gateway.request(new LogoutRequest(sessionId), LogoutResponse.class);
             debugLog.log("LOGOUT_OK session=" + resp.sessionId());
         } catch (Exception e) {
             debugLog.log("LOGOUT_ERR " + e.getMessage());

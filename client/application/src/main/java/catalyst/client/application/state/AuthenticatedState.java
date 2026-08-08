@@ -1,22 +1,21 @@
 package catalyst.client.application.state;
 
-import catalyst.client.network.QuicGatewayService;
 import catalyst.client.application.ui.CharacterPanel;
 import catalyst.client.application.ui.CharacterPanel.CharRow;
 import catalyst.client.application.ui.DebugLogPanel;
-import catalyst.common.network.ResponseCode;
-import catalyst.common.dto.*;
-import catalyst.client.engine.services.state.ApplicationState;
 import catalyst.client.engine.services.state.ApplicationStateService;
+import catalyst.client.engine.services.state.ApplicationState;
+import catalyst.common.network.ResponseCode;
+import catalyst.client.network.QuicGatewayService;
+import catalyst.common.dto.*;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
+import jakarta.inject.Named;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.lwjgl.opengl.GL11;
 
 import java.util.List;
 
-@Slf4j
 @Prototype
 @RequiredArgsConstructor
 public class AuthenticatedState implements ApplicationState {
@@ -28,11 +27,10 @@ public class AuthenticatedState implements ApplicationState {
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
-    private String host, authToken, accountId;
-    private int    port;
+    private String authToken, accountId;
 
-    public void init(String host, int port, String authToken, String accountId) {
-        this.host = host; this.port = port; this.authToken = authToken; this.accountId = accountId;
+    public void init(String authToken, String accountId) {
+        this.authToken = authToken; this.accountId = accountId;
     }
 
     @Override
@@ -67,7 +65,7 @@ public class AuthenticatedState implements ApplicationState {
 
     private void refreshCharacters() {
         try {
-            CharListResponse resp = gateway.request(host, port, new CharListRequest(authToken), CharListResponse.class);
+            CharListResponse resp = gateway.request(new CharListRequest(authToken), CharListResponse.class);
             if (resp.code() != ResponseCode.OK) {
                 throw new Exception("CHAR_LIST_ERR " + resp.code());
             }
@@ -92,12 +90,12 @@ public class AuthenticatedState implements ApplicationState {
     private void doSelect(String charId) {
         try {
             long characterId = Long.parseLong(charId);
-            CharSelectResponse resp = gateway.request(host, port, new CharSelectRequest(authToken, characterId), CharSelectResponse.class);
+            CharSelectResponse resp = gateway.request(new CharSelectRequest(authToken, characterId), CharSelectResponse.class);
             if (resp.code() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.code()); return; }
             String charName = resp.characterName();
             panel.setSelectedCharacter(charId, charName);
             CharacterSelectedState next = selectedProvider.get();
-            next.init(host, port, authToken, accountId, charId, charName, resp.currentZoneId());
+            next.init(authToken, accountId, charId, charName, resp.currentZoneId());
             stateService.changeState(() -> next);
         } catch (Exception e) { debugLog.log("CHAR_SELECT_ERR " + e.getMessage()); }
     }
@@ -105,7 +103,7 @@ public class AuthenticatedState implements ApplicationState {
     private void doDelete(String charId) {
         try {
             long characterId = Long.parseLong(charId);
-            CharDeleteResponse resp = gateway.request(host, port, new CharDeleteRequest(authToken, characterId), CharDeleteResponse.class);
+            CharDeleteResponse resp = gateway.request(new CharDeleteRequest(authToken, characterId), CharDeleteResponse.class);
             if (resp.code() == ResponseCode.OK) { 
                 debugLog.log("CHAR_DELETE_OK id=" + charId); 
                 refreshCharacters(); 
@@ -117,7 +115,7 @@ public class AuthenticatedState implements ApplicationState {
 
     private void doCreate() {
         try {
-            CharCreateResponse resp = gateway.request(host, port,
+            CharCreateResponse resp = gateway.request(
                 new CharCreateRequest(authToken, panel.getNewName(), panel.getRaceId(), panel.getSizeId(),
                     panel.getFaceId(), panel.getJobId(), Integer.toString(panel.getNationId())),
                 CharCreateResponse.class);

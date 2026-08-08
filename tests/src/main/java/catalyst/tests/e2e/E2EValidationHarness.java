@@ -21,9 +21,12 @@ public final class E2EValidationHarness {
         catalyst.common.network.ClientDispatcher dispatcher = new catalyst.common.network.ClientDispatcher();
         catalyst.client.network.QuicGateway gateway = new catalyst.client.network.QuicGateway(dispatcher);
         try (QuicGatewayService service = new QuicGatewayService(gateway)) {
+            // Register gateway host and port once
+            service.connect(host, port);
+
             // 1. LOGIN
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
-            var loginResp = service.request(host, port, new LoginRequest("dev", "dev"), LoginResponse.class);
+            var loginResp = service.request(new LoginRequest("dev", "dev"), LoginResponse.class);
             System.out.println("Login Response: " + loginResp);
             if (ResponseCode.OK != loginResp.code()) {
                 throw new AssertionError("LOGIN failed: " + loginResp.message());
@@ -38,7 +41,7 @@ public final class E2EValidationHarness {
                 (char)('A' + new java.util.Random().nextInt(26)) + 
                 (char)('A' + new java.util.Random().nextInt(26));
             var createResp = service.request(
-                host, port, new CharCreateRequest(authToken, charName, 1, 1, 3, 1, "0"), CharCreateResponse.class
+                new CharCreateRequest(authToken, charName, 1, 1, 3, 1, "0"), CharCreateResponse.class
             );
             System.out.println("Create Response: " + createResp);
             if (ResponseCode.OK != createResp.code()) {
@@ -49,7 +52,7 @@ public final class E2EValidationHarness {
 
             // 3. CHAR_LIST verification
             System.out.println("\nStep 3: Sending CHAR_LIST verification...");
-            var charListResp = service.request(host, port, new CharListRequest(authToken), CharListResponse.class);
+            var charListResp = service.request(new CharListRequest(authToken), CharListResponse.class);
             if (ResponseCode.OK != charListResp.code()) {
                 throw new AssertionError("CHAR_LIST failed: " + charListResp.code());
             }
@@ -73,7 +76,7 @@ public final class E2EValidationHarness {
 
             // 4. CHAR_SELECT
             System.out.println("\nStep 4: Sending CHAR_SELECT...");
-            var selectResp = service.request(host, port, new CharSelectRequest(authToken, Long.parseLong(newCharId)), CharSelectResponse.class);
+            var selectResp = service.request(new CharSelectRequest(authToken, Long.parseLong(newCharId)), CharSelectResponse.class);
             System.out.println("Select Response: " + selectResp);
             if (ResponseCode.OK != selectResp.code()) {
                 throw new AssertionError("CHAR_SELECT failed: " + selectResp.message());
@@ -81,7 +84,7 @@ public final class E2EValidationHarness {
 
             // 5. PLAY
             System.out.println("\nStep 5: Sending PLAY...");
-            var playResp = service.request(host, port, new PlayRequest(authToken, Long.parseLong(newCharId)), PlayResponse.class);
+            var playResp = service.request(new PlayRequest(authToken, Long.parseLong(newCharId)), PlayResponse.class);
             System.out.println("Play Response: " + playResp);
             if (ResponseCode.OK != playResp.code()) {
                 throw new AssertionError("PLAY failed: " + playResp.message());
@@ -91,7 +94,7 @@ public final class E2EValidationHarness {
 
             // 6. PING/PONG validation
             System.out.println("\nStep 6: Sending PING/PONG validation...");
-            service.sendAsync(host, port, new PingRequest(sessionId));
+            service.sendAsync(new PingRequest(sessionId));
             
             AtomicReference<PingResponse> pingRespRef = new AtomicReference<>();
             await().atMost(Duration.ofSeconds(5))
@@ -114,7 +117,7 @@ public final class E2EValidationHarness {
 
             // 7. LOGOUT
             System.out.println("\nStep 7: Sending LOGOUT...");
-            var logoutResp = service.request(host, port, new LogoutRequest(sessionId), LogoutResponse.class);
+            var logoutResp = service.request(new LogoutRequest(sessionId), LogoutResponse.class);
             System.out.println("Logout Response: " + logoutResp);
             if (logoutResp.sessionId() == null) {
                 throw new AssertionError("LOGOUT failed!");
@@ -123,7 +126,7 @@ public final class E2EValidationHarness {
 
             // 8. Cleanup Character
             System.out.println("\nStep 8: Cleanup character...");
-            var deleteResp = service.request(host, port, new CharDeleteRequest(authToken, Long.parseLong(newCharId)), CharDeleteResponse.class);
+            var deleteResp = service.request(new CharDeleteRequest(authToken, Long.parseLong(newCharId)), CharDeleteResponse.class);
             System.out.println("Delete Response: " + deleteResp);
             if (ResponseCode.OK != deleteResp.code()) {
                 throw new AssertionError("Character cleanup failed!");

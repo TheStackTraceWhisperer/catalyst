@@ -1,4 +1,7 @@
-package catalyst.common.network;
+package catalyst.common.dto;
+
+import catalyst.common.network.GatewayFrame;
+import catalyst.common.network.GatewayMessage;
 
 public interface WorldGatewayMessage extends GatewayMessage {
     @Override

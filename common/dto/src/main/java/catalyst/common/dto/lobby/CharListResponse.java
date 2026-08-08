@@ -1,7 +1,7 @@
 package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.network.LobbyGatewayMessage;
+import catalyst.common.dto.LobbyGatewayMessage;
 import catalyst.common.network.ResponseCode;
 import java.util.List;
 

@@ -1,7 +1,7 @@
 package catalyst.common.dto.lobby;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.LobbyGatewayMessage;
+import catalyst.common.dto.lobby.LobbyGatewayMessage;
 import catalyst.common.network.ResponseCode;
 
 public record CharCreateResponse(

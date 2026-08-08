@@ -1,7 +1,7 @@
 package catalyst.common.dto.world;
 
 import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.WorldGatewayMessage;
+import catalyst.common.dto.world.WorldGatewayMessage;
 import catalyst.common.network.ResponseCode;
 
 public record LogoutResponse(

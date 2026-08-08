@@ -6,23 +6,15 @@ import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
 /**
- * Netty encoder that serializes outbound domain objects using Apache Fory
+ * Netty encoder that serializes outbound {@link GatewayMessage} objects using Apache Fory
  * and wraps them in a {@link GatewayFrame} with the appropriate routing flag.
  */
 @Slf4j
-public final class ForyEncoder extends MessageToMessageEncoder<Object> {
+public final class ForyEncoder extends MessageToMessageEncoder<GatewayMessage> {
 
     @Override
-    protected void encode(ChannelHandlerContext ctx, Object msg, List<Object> out) throws Exception {
-        byte[] payloadBytes = ForySerializer.serialize(msg);
-
-        byte flag = GatewayFrame.FLAG_LOBBY;
-        if (msg instanceof GatewayMessage gm) {
-            flag = gm.gatewayFlag();
-        }
-
-        log.debug("Encoding message: class={} flag={}", msg.getClass().getSimpleName(), flag);
-
-        out.add(new GatewayFrame(flag, payloadBytes));
+    protected void encode(ChannelHandlerContext ctx, GatewayMessage msg, List<Object> out) throws Exception {
+        log.debug("Encoding message: class={} flag={}", msg.getClass().getSimpleName(), msg.gatewayFlag());
+        out.add(new GatewayFrame(msg.gatewayFlag(), ForySerializer.serialize(msg)));
     }
 }

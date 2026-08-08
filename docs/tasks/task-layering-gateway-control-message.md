@@ -2,6 +2,7 @@
 
 **Priority:** Low (exposure, not an active bug)  
 **Area:** Module Layering / Common
+**Effort:** Small (1 day)  
 
 ## Problem
 

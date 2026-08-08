@@ -2,6 +2,7 @@
 
 **Priority:** High (blocks horizontal world server scaling)  
 **Area:** World Service / Lobby Service / Infrastructure
+**Effort:** Medium (3-5 days)  
 
 ## Current Baseline Status
 We have completed **Phase 1: Dynamic Gateway Routing & DNS Mapping**:

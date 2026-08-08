@@ -2,6 +2,7 @@
 
 **Priority:** Sooner  
 **Area:** Infrastructure / Security
+**Effort:** Medium (3-5 days)  
 
 ## Problem
 

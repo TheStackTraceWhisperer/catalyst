@@ -2,6 +2,7 @@
 
 **Priority:** Low (depends on World Registry and Entity Spawning)  
 **Area:** World Service / Gateway / Lobby Service
+**Effort:** Medium (3-5 days)  
 
 ## Problem
 

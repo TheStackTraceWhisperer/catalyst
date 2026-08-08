@@ -2,6 +2,7 @@
 
 **Priority:** Low (pre-requisite for 3D rendering work)  
 **Area:** Client / Engine / Rendering
+**Effort:** Medium (3-5 days)  
 
 ## Purpose
 

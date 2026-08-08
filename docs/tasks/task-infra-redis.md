@@ -2,6 +2,7 @@
 
 **Priority:** Later  
 **Area:** Infrastructure / Caching / Session Management
+**Effort:** Medium (3-5 days)  
 
 ## Purpose
 

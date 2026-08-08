@@ -2,6 +2,7 @@
 
 **Priority:** Medium  
 **Area:** Client / Networking
+**Effort:** Small (1-2 days)  
 
 ## Problem
 

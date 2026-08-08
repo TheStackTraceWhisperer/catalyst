@@ -2,6 +2,7 @@
 
 **Priority:** Medium  
 **Area:** World Service / Session Management
+**Effort:** Small (1-2 days)  
 
 ## Problem
 

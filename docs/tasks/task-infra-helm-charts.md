@@ -2,6 +2,7 @@
 
 **Priority:** Much Later  
 **Area:** Infrastructure / Deployment
+**Effort:** Small (1-2 days)  
 
 ## Purpose
 

@@ -2,6 +2,7 @@
 
 **Priority:** Medium (core gameplay prerequisite)  
 **Area:** World Service / Game Simulation
+**Effort:** Large (1-2 weeks)  
 
 ## Purpose
 

@@ -2,6 +2,7 @@
 
 **Priority:** Medium (security hardening)  
 **Area:** Common / Network / Serialization
+**Effort:** Small (1-2 days)  
 
 ## Problem
 

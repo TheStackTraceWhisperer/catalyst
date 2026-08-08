@@ -1,7 +1,6 @@
 package catalyst.server.world;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.common.network.PacketHandler;
 import catalyst.server.world.dispatch.ZoneMessageDispatcher;
 import catalyst.server.world.properties.ServerProperties;
 import catalyst.server.world.repository.SessionRepository;
@@ -13,7 +12,6 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.sql.SQLException;
-import java.util.List;
 
 @Slf4j
 @Singleton

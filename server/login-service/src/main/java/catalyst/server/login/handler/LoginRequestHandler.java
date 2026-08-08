@@ -1,7 +1,7 @@
 package catalyst.server.login.handler;
 
 import catalyst.common.network.ResponseCode;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.common.dto.LoginRequest;
 import catalyst.common.dto.LoginResponse;
 import catalyst.server.login.properties.ServerProperties;

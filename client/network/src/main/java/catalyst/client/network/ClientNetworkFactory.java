@@ -1,6 +1,6 @@
 package catalyst.client.network;
 
-import catalyst.common.network.ClientDispatcher;
+import catalyst.client.network.dispatch.ClientDispatcher;
 import io.micronaut.context.annotation.Factory;
 import jakarta.inject.Singleton;
 

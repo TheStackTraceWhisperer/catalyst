@@ -4,7 +4,7 @@ import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
-import catalyst.common.network.ClientDispatcher;
+import catalyst.client.network.dispatch.ClientDispatcher;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;

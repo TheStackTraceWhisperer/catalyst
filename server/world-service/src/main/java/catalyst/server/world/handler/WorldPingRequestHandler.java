@@ -2,7 +2,7 @@ package catalyst.server.world.handler;
 
 import catalyst.common.dto.PingRequest;
 import catalyst.common.dto.PingResponse;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.world.repository.SessionRepository;
 import jakarta.inject.Singleton;

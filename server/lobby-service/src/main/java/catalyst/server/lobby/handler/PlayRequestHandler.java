@@ -3,7 +3,7 @@ package catalyst.server.lobby.handler;
 import catalyst.common.dto.PlayRequest;
 import catalyst.common.dto.PlayResponse;
 import catalyst.common.network.GatewayControlMessage;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.common.repository.AuthTicketStore;
 import catalyst.server.lobby.properties.ServerProperties;

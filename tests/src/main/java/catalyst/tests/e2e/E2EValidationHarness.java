@@ -1,10 +1,10 @@
 package catalyst.tests.e2e;
 
+import catalyst.client.network.dispatch.ClientDispatcher;
 import catalyst.common.network.ResponseCode;
 import catalyst.client.network.QuicGatewayService;
 import catalyst.common.dto.*;
-import java.io.IOException;
-import java.util.List;
+
 import static org.awaitility.Awaitility.await;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicReference;
@@ -18,7 +18,7 @@ public final class E2EValidationHarness {
         System.out.println("=== Starting E2E Protocol Validation Harness ===");
         System.out.println("Target: " + host + ":" + port);
 
-        catalyst.common.network.ClientDispatcher dispatcher = new catalyst.common.network.ClientDispatcher();
+        ClientDispatcher dispatcher = new ClientDispatcher();
         catalyst.client.network.QuicGateway gateway = new catalyst.client.network.QuicGateway(dispatcher);
         try (QuicGatewayService service = new QuicGatewayService(gateway)) {
             // Register gateway host and port once

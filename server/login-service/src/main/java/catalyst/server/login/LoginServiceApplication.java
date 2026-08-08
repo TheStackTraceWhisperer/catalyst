@@ -1,8 +1,7 @@
 package catalyst.server.login;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.common.network.ObjectDispatcher;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.server.login.properties.ServerProperties;
 import catalyst.server.login.handler.LoginRequestHandler;
 import catalyst.server.login.transport.QuicServerTransport;
@@ -17,7 +16,7 @@ import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 
-import catalyst.common.network.StatelessMessageDispatcher;
+import catalyst.server.common.network.StatelessMessageDispatcher;
 
 @Slf4j
 @Singleton

@@ -1,6 +1,6 @@
 package catalyst.server.world.dispatch;
 
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import io.micronaut.context.BeanProvider;
 import jakarta.annotation.PostConstruct;
 import jakarta.inject.Singleton;

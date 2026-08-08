@@ -8,7 +8,7 @@ import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import catalyst.common.network.ClientDispatcher;
+import catalyst.client.network.dispatch.ClientDispatcher;
 import catalyst.client.engine.services.state.ApplicationState;
 import java.util.Comparator;
 import java.util.List;

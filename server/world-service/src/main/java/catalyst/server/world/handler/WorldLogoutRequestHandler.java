@@ -2,7 +2,7 @@ package catalyst.server.world.handler;
 
 import catalyst.common.dto.LogoutRequest;
 import catalyst.common.dto.LogoutResponse;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.world.repository.SessionRepository;
 import jakarta.inject.Singleton;

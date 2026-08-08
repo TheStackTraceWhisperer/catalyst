@@ -1,7 +1,6 @@
 package catalyst.server.lobby;
 
-import catalyst.common.network.ObjectDispatcher;
-import catalyst.common.network.PacketHandler;
+import catalyst.server.common.network.PacketHandler;
 import catalyst.server.lobby.properties.ServerProperties;
 import catalyst.server.lobby.transport.QuicServerTransport;
 import io.micronaut.runtime.Micronaut;
@@ -12,7 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.util.List;
 
-import catalyst.common.network.StatelessMessageDispatcher;
+import catalyst.server.common.network.StatelessMessageDispatcher;
 
 @Slf4j
 @Singleton

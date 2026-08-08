@@ -1,4 +1,4 @@
-package catalyst.common.network;
+package catalyst.server.common.network;
 
 /**
  * Strategy interface for processing inbound packets.

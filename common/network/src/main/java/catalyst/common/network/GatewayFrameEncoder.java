@@ -8,7 +8,7 @@ public final class GatewayFrameEncoder extends MessageToByteEncoder<GatewayFrame
 
     @Override
     protected void encode(ChannelHandlerContext ctx, GatewayFrame msg, ByteBuf out) throws Exception {
-        // 1. Write message flag
+        // 1. Write the message flag
         out.writeByte(msg.flag());
 
         // 2. Write sessionId length & bytes

@@ -23,10 +23,13 @@ import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
+
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /** Internal QUIC client used by the gateway to forward GatewayFrame requests asynchronously to backends. */
 @Slf4j
+@RequiredArgsConstructor
 public final class QuicGatewayClient implements AutoCloseable {
     public static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
@@ -38,11 +41,6 @@ public final class QuicGatewayClient implements AutoCloseable {
     private EventLoopGroup group;
     private Channel udpChannel;
     private volatile QuicChannel quicChannel;
-
-    public QuicGatewayClient(String host, int port) {
-        this.host = host;
-        this.port = port;
-    }
 
     /** Sends a GatewayFrame request asynchronously and returns a CompletableFuture containing the response. */
     public CompletableFuture<GatewayFrame> requestAsync(GatewayFrame frame, java.util.function.Consumer<catalyst.common.network.GatewayControlMessage> controlCallback) {

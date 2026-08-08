@@ -1,4 +1,4 @@
-package catalyst.common.network.model;
+package catalyst.common.dto.world;
 
 public record CharacterIdentity(
     String characterId,

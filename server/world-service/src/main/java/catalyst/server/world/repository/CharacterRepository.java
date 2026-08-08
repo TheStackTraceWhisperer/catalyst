@@ -1,6 +1,6 @@
 package catalyst.server.world.repository;
 
-import catalyst.common.network.model.CharacterIdentity;
+import catalyst.common.dto.world.CharacterIdentity;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import javax.sql.DataSource;

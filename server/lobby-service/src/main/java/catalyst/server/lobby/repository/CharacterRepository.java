@@ -1,6 +1,6 @@
 package catalyst.server.lobby.repository;
 
-import catalyst.common.network.model.CharacterIdentity;
+import catalyst.common.dto.world.CharacterIdentity;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;

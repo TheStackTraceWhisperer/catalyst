@@ -3,7 +3,7 @@ package catalyst.gateway.transport;
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.common.network.GatewayFrame;
 import catalyst.gateway.properties.GatewayProperties;
-import catalyst.gateway.proxy.QuicGatewayClient;
+import catalyst.gateway.proxy.BackendClient;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
@@ -17,14 +17,14 @@ import lombok.extern.slf4j.Slf4j;
 @RequiredArgsConstructor
 public final class RequestHandler extends ChannelInboundHandlerAdapter {
     public static final AttributeKey<ConnectionState> STATE_KEY = AttributeKey.valueOf("gateway.state");
-    public static final AttributeKey<QuicGatewayClient> WORLD_CLIENT_KEY = AttributeKey.valueOf("gateway.worldClient");
+    public static final AttributeKey<BackendClient> WORLD_CLIENT_KEY = AttributeKey.valueOf("gateway.worldClient");
     public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("gateway.sessionId");
 
     private final GatewayProperties props;
-    private final QuicGatewayClient loginClient;
-    private final QuicGatewayClient lobbyClient;
-    private final QuicGatewayClient worldClient;
-    private final Map<BackendAddress, QuicGatewayClient> dynamicWorldClients;
+    private final BackendClient loginClient;
+    private final BackendClient lobbyClient;
+    private final BackendClient worldClient;
+    private final Map<BackendAddress, BackendClient> dynamicWorldClients;
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
@@ -42,7 +42,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             parentChannel.attr(STATE_KEY).set(state);
         }
 
-        QuicGatewayClient client = resolveTargetClient(parentChannel, state, requestFrame);
+        BackendClient client = resolveTargetClient(parentChannel, state, requestFrame);
         if (client == null) {
             log.warn("No target client resolved for request flag={} in state={}", requestFrame.flag(), state);
             ctx.writeAndFlush(new GatewayFrame(GatewayFrame.FLAG_CONTROL, "", new byte[0]))
@@ -87,7 +87,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             .addListener(f -> ((QuicStreamChannel) ctx.channel()).shutdownOutput());
     }
 
-    private QuicGatewayClient resolveTargetClient(Channel parentChannel, ConnectionState state, GatewayFrame requestFrame) {
+    private BackendClient resolveTargetClient(Channel parentChannel, ConnectionState state, GatewayFrame requestFrame) {
         // Enforcement rules based on connection state
         if (state == ConnectionState.UNAUTHENTICATED) {
             // Force all traffic to login server when unauthenticated
@@ -102,7 +102,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
             return lobbyClient;
         } else if (flag == GatewayFrame.FLAG_WORLD) {
             if (state == ConnectionState.PLAYING) {
-                QuicGatewayClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
+                BackendClient world = parentChannel.attr(WORLD_CLIENT_KEY).get();
                 return world != null ? world : worldClient;
             }
         }
@@ -146,13 +146,13 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 }
 
                 // Resolve the specific world server client
-                QuicGatewayClient targetClient;
+                BackendClient targetClient;
                 if (address.host().equals(props.getWorldhost()) && address.port() == props.getWorldport()) {
                     targetClient = worldClient;
                 } else {
                     targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
                         log.info("Opening new persistent internal connection to dynamic world backend: {}", key);
-                        return new QuicGatewayClient(key.host(), key.port());
+                        return new BackendClient(key.host(), key.port());
                     });
                 }
                 parentChannel.attr(WORLD_CLIENT_KEY).set(targetClient);

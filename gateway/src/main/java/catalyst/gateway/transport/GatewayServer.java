@@ -3,7 +3,7 @@ package catalyst.gateway.transport;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
 import catalyst.gateway.properties.GatewayProperties;
-import catalyst.gateway.proxy.QuicGatewayClient;
+import catalyst.gateway.proxy.BackendClient;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -28,10 +28,10 @@ import lombok.extern.slf4j.Slf4j;
 public final class GatewayServer {
 
     private final GatewayProperties props;
-    private final QuicGatewayClient loginClient;
-    private final QuicGatewayClient lobbyClient;
-    private final QuicGatewayClient worldClient;
-    private final Map<BackendAddress, QuicGatewayClient> dynamicWorldClients = new ConcurrentHashMap<>();
+    private final BackendClient loginClient;
+    private final BackendClient lobbyClient;
+    private final BackendClient worldClient;
+    private final Map<BackendAddress, BackendClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
     private EventLoopGroup group;
     private Channel bindChannel;
@@ -39,9 +39,9 @@ public final class GatewayServer {
 
     public GatewayServer(GatewayProperties props) {
         this.props = props;
-        this.loginClient = new QuicGatewayClient(props.getLoginhost(), props.getLoginport());
-        this.lobbyClient = new QuicGatewayClient(props.getLobbyhost(), props.getLobbyport());
-        this.worldClient = new QuicGatewayClient(props.getWorldhost(), props.getWorldport());
+        this.loginClient = new BackendClient(props.getLoginhost(), props.getLoginport());
+        this.lobbyClient = new BackendClient(props.getLobbyhost(), props.getLobbyport());
+        this.worldClient = new BackendClient(props.getWorldhost(), props.getWorldport());
     }
 
     public boolean isBound() {
@@ -51,7 +51,7 @@ public final class GatewayServer {
     public void start() throws Exception {
         SelfSignedCertificate cert = new SelfSignedCertificate();
         QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
-            .applicationProtocols(QuicGatewayClient.PROTOCOL)
+            .applicationProtocols(BackendClient.PROTOCOL)
             .build();
 
         group = new NioEventLoopGroup();
@@ -102,7 +102,7 @@ public final class GatewayServer {
         loginClient.close();
         lobbyClient.close();
         worldClient.close();
-        dynamicWorldClients.values().forEach(QuicGatewayClient::close);
+        dynamicWorldClients.values().forEach(BackendClient::close);
         dynamicWorldClients.clear();
     }
 }

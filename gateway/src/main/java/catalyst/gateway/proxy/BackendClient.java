@@ -5,8 +5,6 @@ import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
-import io.netty.channel.ChannelHandlerContext;
-import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
@@ -27,10 +25,10 @@ import java.util.concurrent.locks.ReentrantLock;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-/** Internal QUIC client used by the gateway to forward GatewayFrame requests asynchronously to backends. */
+/** Internal client used by the gateway to forward GatewayFrame requests asynchronously to backends. */
 @Slf4j
 @RequiredArgsConstructor
-public final class QuicGatewayClient implements AutoCloseable {
+public final class BackendClient implements AutoCloseable {
     public static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 

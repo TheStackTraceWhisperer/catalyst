@@ -1,25 +1,23 @@
-package catalyst.gateway.health;
+package catalyst.server.lobby.health;
 
-import catalyst.gateway.transport.GatewayServer;
+import catalyst.server.lobby.transport.QuicServerTransport;
 import io.micronaut.management.health.indicator.HealthIndicator;
 import io.micronaut.management.health.indicator.HealthResult;
 import jakarta.inject.Singleton;
 import org.reactivestreams.Publisher;
 import io.micronaut.core.async.publisher.Publishers;
-
 import io.micronaut.health.HealthStatus;
-
 import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 @Singleton
-public class QuicHealthIndicator implements HealthIndicator {
-    private final GatewayServer server;
+public class LobbyHealthIndicator implements HealthIndicator {
+    private final QuicServerTransport transport;
 
     @Override
     public Publisher<HealthResult> getResult() {
-        boolean active = server.isBound();
-        HealthResult.Builder builder = HealthResult.builder("quic-server");
+        boolean active = transport.isBound();
+        HealthResult.Builder builder = HealthResult.builder("lobby-quic-server");
         if (active) {
             return Publishers.just(builder.status(HealthStatus.UP).build());
         } else {

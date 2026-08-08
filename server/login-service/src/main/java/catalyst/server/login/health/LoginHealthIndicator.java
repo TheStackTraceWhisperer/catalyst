@@ -1,6 +1,6 @@
-package catalyst.server.world.health;
+package catalyst.server.login.health;
 
-import catalyst.server.world.transport.QuicServerTransport;
+import catalyst.server.login.transport.QuicServerTransport;
 import io.micronaut.management.health.indicator.HealthIndicator;
 import io.micronaut.management.health.indicator.HealthResult;
 import jakarta.inject.Singleton;
@@ -11,13 +11,13 @@ import lombok.RequiredArgsConstructor;
 
 @RequiredArgsConstructor
 @Singleton
-public class QuicHealthIndicator implements HealthIndicator {
+public class LoginHealthIndicator implements HealthIndicator {
     private final QuicServerTransport transport;
 
     @Override
     public Publisher<HealthResult> getResult() {
         boolean active = transport.isBound();
-        HealthResult.Builder builder = HealthResult.builder("quic-server");
+        HealthResult.Builder builder = HealthResult.builder("login-quic-server");
         if (active) {
             return Publishers.just(builder.status(HealthStatus.UP).build());
         } else {

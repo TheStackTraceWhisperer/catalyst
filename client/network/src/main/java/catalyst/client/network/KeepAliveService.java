@@ -30,6 +30,7 @@ public class KeepAliveService {
     private String host;
     private int port;
     private String sessionId;
+    private volatile long lastPingSentTimeMs;
 
     public void start(String host, int port, String sessionId, long intervalMs) {
         this.host = host;
@@ -86,22 +87,25 @@ public class KeepAliveService {
     }
 
     public void sendPing() {
-        long t0 = System.currentTimeMillis();
+        lastPingSentTimeMs = System.currentTimeMillis();
         try {
-            PingResponse resp = gateway.request(host, port, new PingRequest(sessionId), PingResponse.class);
-            long rtt = System.currentTimeMillis() - t0;
-            if (resp.code() == ResponseCode.OK) {
-                status = "ok";
-                lastRttMs = rtt;
-                lastOkAt = Instant.now();
-                log.debug("PONG session={} rtt={}ms", sessionId, rtt);
-            } else {
-                status = resp.code() != null ? resp.code().name() : "error";
-                log.warn("PING_ERR code={}", resp.code());
-            }
+            gateway.sendAsync(host, port, new PingRequest(sessionId));
         } catch (Exception e) {
             status = "failed";
             log.warn("PING_ERR {}", e.getMessage());
+        }
+    }
+
+    public void handlePong(PingResponse resp) {
+        long rtt = System.currentTimeMillis() - lastPingSentTimeMs;
+        if (resp.code() == ResponseCode.OK) {
+            status = "ok";
+            lastRttMs = rtt;
+            lastOkAt = Instant.now();
+            log.debug("PONG session={} rtt={}ms", sessionId, rtt);
+        } else {
+            status = resp.code() != null ? resp.code().name() : "error";
+            log.warn("PING_ERR code={}", resp.code());
         }
     }
 

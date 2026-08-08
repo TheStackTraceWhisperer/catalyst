@@ -30,6 +30,13 @@ public class QuicGatewayService implements AutoCloseable {
         return gateway.request(host, port, requestPayload, responseType);
     }
 
+    /**
+     * Sends an outbound DTO message asynchronously (non-blocking) and returns immediately.
+     */
+    public void sendAsync(String host, int port, Object requestPayload) {
+        gateway.sendAsync(host, port, requestPayload);
+    }
+
     @Override
     @PreDestroy
     public void close() {

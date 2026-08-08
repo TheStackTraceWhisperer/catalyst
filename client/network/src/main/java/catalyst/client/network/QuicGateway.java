@@ -21,12 +21,14 @@ import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 
+import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
+@Slf4j
 final class QuicGateway implements AutoCloseable {
     static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
@@ -52,6 +54,46 @@ final class QuicGateway implements AutoCloseable {
         } catch (Exception e) {
             closeConnection();
             throw new IOException("QUIC request failed: " + e.getMessage(), e);
+        }
+    }
+
+    synchronized void sendAsync(String host, int port, Object request) {
+        try {
+            ensureConnected(host, port);
+            quicChannel.createStream(QuicStreamType.BIDIRECTIONAL,
+                new ChannelInitializer<QuicStreamChannel>() {
+                    @Override
+                    protected void initChannel(QuicStreamChannel ch) {
+                        ch.pipeline()
+                            .addLast(new GatewayFrameDecoder())
+                            .addLast(new GatewayFrameEncoder())
+                            .addLast(new ForyDecoder())
+                            .addLast(new ForyEncoder())
+                            .addLast(new SimpleChannelInboundHandler<Object>() {
+                                @Override
+                                protected void channelRead0(ChannelHandlerContext ctx, Object msg) {
+                                    clientDispatcher.enqueue(msg);
+                                    ctx.close();
+                                }
+                            });
+                    }
+                })
+            .addListener(future -> {
+                if (future.isSuccess()) {
+                    QuicStreamChannel stream = (QuicStreamChannel) future.getNow();
+                    stream.writeAndFlush(request).addListener(writeFuture -> {
+                        if (!writeFuture.isSuccess()) {
+                            stream.close();
+                        } else {
+                            stream.shutdownOutput();
+                        }
+                    });
+                } else {
+                    log.error("Failed to create stream for async send", future.cause());
+                }
+            });
+        } catch (Exception e) {
+            log.error("Failed to send async request", e);
         }
     }
 

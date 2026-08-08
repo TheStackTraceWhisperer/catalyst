@@ -71,6 +71,13 @@ public class InGameState implements ApplicationState {
         closeSession();
     }
 
+    @Override
+    public void onHandlePacket(Object packet) {
+        if (packet instanceof PingResponse ping) {
+            keepAlive.handlePong(ping);
+        }
+    }
+
     private void doLogout() {
         closeSession();
         stateService.changeState(unauthProvider::get);

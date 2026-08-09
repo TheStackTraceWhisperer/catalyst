@@ -33,7 +33,10 @@ public class LoginServiceApplication {
     private StatelessMessageDispatcher dispatcher;
 
     public static void main(String[] args) {
-        Micronaut.run(LoginServiceApplication.class, args);
+        Micronaut.build(args)
+            .classes(LoginServiceApplication.class)
+            .packages("catalyst")
+            .run();
     }
 
     @EventListener

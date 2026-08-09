@@ -3,32 +3,22 @@ package catalyst.common.network;
 import io.micronaut.context.annotation.ConfigurationProperties;
 
 @ConfigurationProperties("catalyst.tls")
-public class TlsProperties {
-    private String certPath;
-    private String keyPath;
-    private String caPath;
+public interface TlsProperties {
+    /**
+     * Path to the service's own TLS certificate file (PEM).
+     * Mounted from the Kubernetes Secret at /certs/tls.crt
+     */
+    String getCertPath();
 
-    public String getCertPath() {
-        return certPath;
-    }
+    /**
+     * Path to the service's own TLS private key file (PEM).
+     * Mounted from the Kubernetes Secret at /certs/tls.key
+     */
+    String getKeyPath();
 
-    public void setCertPath(String certPath) {
-        this.certPath = certPath;
-    }
-
-    public String getKeyPath() {
-        return keyPath;
-    }
-
-    public void setKeyPath(String keyPath) {
-        this.keyPath = keyPath;
-    }
-
-    public String getCaPath() {
-        return caPath;
-    }
-
-    public void setCaPath(String caPath) {
-        this.caPath = caPath;
-    }
+    /**
+     * Path to the CA certificate bundle used to verify peers.
+     * Mounted from the Kubernetes Secret at /certs/ca.crt
+     */
+    String getCaPath();
 }

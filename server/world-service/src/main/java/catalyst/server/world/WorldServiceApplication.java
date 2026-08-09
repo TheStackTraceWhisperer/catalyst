@@ -25,7 +25,10 @@ public class WorldServiceApplication {
     private final TaskScheduler scheduler;
 
     public static void main(String[] args) {
-        Micronaut.run(WorldServiceApplication.class, args);
+        Micronaut.build(args)
+            .classes(WorldServiceApplication.class)
+            .packages("catalyst")
+            .run();
     }
 
     @EventListener

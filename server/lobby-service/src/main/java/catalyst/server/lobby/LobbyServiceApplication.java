@@ -25,7 +25,10 @@ public class LobbyServiceApplication {
     private StatelessMessageDispatcher dispatcher;
 
     public static void main(String[] args) {
-        Micronaut.run(LobbyServiceApplication.class, args);
+        Micronaut.build(args)
+            .classes(LobbyServiceApplication.class)
+            .packages("catalyst")
+            .run();
     }
 
     @EventListener

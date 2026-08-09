@@ -57,6 +57,18 @@
       <version>${micronaut.version}</version>
       <scope>provided</scope>
     </dependency>
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-aop</artifactId>
+      <version>${micronaut.version}</version>
+      <scope>provided</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-context</artifactId>
+      <version>${micronaut.version}</version>
+      <scope>provided</scope>
+    </dependency>
   </dependencies>
 
   <build>

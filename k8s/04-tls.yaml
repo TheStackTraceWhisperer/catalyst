@@ -11,7 +11,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: catalyst-ca
-  namespace: default
+  namespace: cert-manager
 spec:
   isCA: true
   commonName: catalyst-ca
@@ -44,6 +44,10 @@ spec:
   dnsNames:
     - gateway-service
     - gateway-service.default.svc.cluster.local
+    - localhost
+    - 127.0.0.1
+  ipAddresses:
+    - 127.0.0.1
   usages:
     - server auth
     - client auth

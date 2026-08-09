@@ -103,7 +103,7 @@ echo "[e2e] Waiting for TLS secrets to be provisioned..."
 
 function wait_for_secret() {
   local secret=$1
-  local max_attempts=30
+  local max_attempts=150
   local attempt=0
   while [ $attempt -lt $max_attempts ]; do
     if kubectl get secret "$secret" &>/dev/null; then
@@ -140,7 +140,10 @@ kubectl rollout status deployment/world-service --timeout=90s
 kubectl rollout status deployment/gateway --timeout=90s
 
 # 8. Execute E2E harness
+echo "[e2e] Extracting CA certificate for host test client validation..."
+kubectl get secret catalyst-ca-secret -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > tests/ca.crt
+
 echo "[e2e] Running protocol validation test client..."
-java --enable-native-access=ALL-UNNAMED -jar tests/target/catalyst-tests-1.0-SNAPSHOT.jar localhost "${TEST_PORT}"
+java -Dcatalyst.tls.ca-path=tests/ca.crt -Dcatalyst.tls.verify-host=gateway-service --enable-native-access=ALL-UNNAMED -jar tests/target/catalyst-tests-1.0-SNAPSHOT.jar 127.0.0.1 "${TEST_PORT}"
 
 echo "[e2e] E2E validation passed successfully!"

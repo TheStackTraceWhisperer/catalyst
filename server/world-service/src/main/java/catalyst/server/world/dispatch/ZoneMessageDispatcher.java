@@ -27,7 +27,7 @@ public class ZoneMessageDispatcher implements AutoCloseable {
     private final Map<Class<?>, PacketHandler<?>> handlerRegistry = new HashMap<>();
     private final Queue<QueuedCommand> zoneQueue = new ConcurrentLinkedQueue<>();
     
-    private static final int TICK_RATE_MS = 100;
+    private static final int TICK_RATE_MS = 100; // TODO: Samuel - 60 Hz (16.67ms) is more ideal for a game loop, but 10Hz (100ms) is sufficient for now to avoid overloading the server with too many ticks while we are still in early development.
     private Thread tickThread;
     private volatile boolean running = true;
 

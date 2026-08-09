@@ -3,7 +3,6 @@ package catalyst.gateway.transport;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
 import catalyst.common.network.ServiceType;
-import catalyst.common.network.TlsContextFactory;
 import catalyst.common.network.TlsProperties;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.BackendClient;
@@ -53,7 +52,7 @@ public final class GatewayServer {
     }
 
     public void start() throws Exception {
-        QuicSslContext sslContext = TlsContextFactory.gatewayServerContext(tlsProps);
+        QuicSslContext sslContext = GatewayTlsContextFactory.gatewayServerContext(tlsProps);
 
         group = new NioEventLoopGroup();
         io.netty.channel.ChannelHandler codec = new QuicServerCodecBuilder()

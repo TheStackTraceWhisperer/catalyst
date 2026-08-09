@@ -4,9 +4,10 @@ import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
-import catalyst.common.network.TlsContextFactory;
 import catalyst.common.network.TlsProperties;
 import catalyst.client.network.dispatch.ClientDispatcher;
+import io.netty.incubator.codec.quic.QuicSslContextBuilder;
+import java.io.File;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandlerContext;
@@ -111,11 +112,12 @@ public final class QuicGateway implements AutoCloseable {
         }
         closeConnection();
 
-        QuicSslContext sslContext = TlsContextFactory.clientContext(tlsProps);
+        QuicSslContext sslContext = buildClientContext(tlsProps);
 
         group = new NioEventLoopGroup(1);
+        String verifyHost = System.getProperty("catalyst.tls.verify-host", host);
         io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()
-            .sslEngineProvider(q -> sslContext.newEngine(q.alloc(), host, port))
+            .sslEngineProvider(q -> sslContext.newEngine(q.alloc(), verifyHost, port))
             .maxIdleTimeout(60, TimeUnit.SECONDS)
             .initialMaxData(10_000_000)
             .initialMaxStreamDataBidirectionalLocal(1_000_000)
@@ -261,5 +263,13 @@ public final class QuicGateway implements AutoCloseable {
         public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
             ctx.close();
         }
+    }
+
+    private QuicSslContext buildClientContext(TlsProperties tls) throws Exception {
+        return QuicSslContextBuilder
+            .forClient()
+            .trustManager(TlsProperties.getWrappedTrustManagers(tls.getCaPath())[0])
+            .applicationProtocols(PROTOCOL)
+            .build();
     }
 }

@@ -3,8 +3,8 @@ package catalyst.gateway.proxy;
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
-import catalyst.common.network.TlsContextFactory;
 import catalyst.common.network.TlsProperties;
+import catalyst.gateway.transport.GatewayTlsContextFactory;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
@@ -88,7 +88,7 @@ public final class BackendClient implements AutoCloseable {
 
             closeConnectionLocked();
 
-            QuicSslContext sslContext = TlsContextFactory.backendClientContext(tlsProps);
+            QuicSslContext sslContext = GatewayTlsContextFactory.backendClientContext(tlsProps);
 
             group = new NioEventLoopGroup(1);
             io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()

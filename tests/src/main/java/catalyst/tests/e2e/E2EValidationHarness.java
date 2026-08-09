@@ -21,12 +21,10 @@ public final class E2EValidationHarness {
         System.out.println("Target: " + host + ":" + port);
 
         ClientDispatcher dispatcher = new ClientDispatcher();
-        // Use blank TlsProperties — the clientContext factory will fall back to insecure trust for E2E testing
-        catalyst.common.network.TlsProperties devTls = new catalyst.common.network.TlsProperties() {
-            @Override public String getCertPath() { return ""; }
-            @Override public String getKeyPath() { return ""; }
-            @Override public String getCaPath() { return ""; }
-        };
+        catalyst.common.network.TlsProperties devTls = new catalyst.common.network.TlsProperties();
+        devTls.setCertPath("");
+        devTls.setKeyPath("");
+        devTls.setCaPath(System.getProperty("catalyst.tls.ca-path", ""));
         catalyst.client.network.QuicGateway gateway = new catalyst.client.network.QuicGateway(dispatcher, devTls);
         try (QuicGatewayService service = new QuicGatewayService(gateway)) {
             // Register gateway host and port once

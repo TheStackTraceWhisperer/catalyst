@@ -1,8 +1,10 @@
 package catalyst.server.login.transport;
 
 import catalyst.server.login.properties.ServerProperties;
-import catalyst.common.network.TlsContextFactory;
 import catalyst.common.network.TlsProperties;
+import io.netty.handler.ssl.ClientAuth;
+import io.netty.incubator.codec.quic.QuicSslContextBuilder;
+import java.io.File;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -55,7 +57,7 @@ public final class QuicServerTransport {
     }
 
     public void start() throws Exception {
-        QuicSslContext sslContext = TlsContextFactory.backendServerContext(tlsProps);
+        QuicSslContext sslContext = buildSslContext();
 
         group = new NioEventLoopGroup();
         ChannelHandler codec = new QuicServerCodecBuilder()
@@ -168,5 +170,15 @@ public final class QuicServerTransport {
             log.warn("QUIC stream error", cause);
             ctx.close();
         }
+    }
+
+    private QuicSslContext buildSslContext() throws Exception {
+        log.info("TLS: loading backend server context from {}", tlsProps.getCertPath());
+        return QuicSslContextBuilder
+            .forServer(new File(tlsProps.getKeyPath()), null, new File(tlsProps.getCertPath()))
+            .trustManager(TlsProperties.getWrappedTrustManagers(tlsProps.getCaPath())[0])
+            .clientAuth(ClientAuth.REQUIRE)
+            .applicationProtocols(PROTOCOL)
+            .build();
     }
 }

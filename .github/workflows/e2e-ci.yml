@@ -21,6 +21,7 @@ jobs:
           java-version: '25'
           distribution: 'oracle'
           cache: 'maven'
+          cache-dependency-path: 'catalyst/pom.xml'
 
       - name: Run E2E Integration Tests
         run: |

@@ -75,7 +75,7 @@ echo "[e2e] Building postgres image..."
 docker build -t catalyst-postgres:17 docker/postgres
 
 echo "[e2e] Compiling and containerizing microservices with Jib..."
-"${MVN}" -q -DskipTests clean package jib:dockerBuild
+"${MVN}" -f catalyst/pom.xml -q -DskipTests clean package jib:dockerBuild
 
 
 # 5. Import images into k3d

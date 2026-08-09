@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset xmlns="https://www.mojohaus.org/VERSIONS/RULE/3.0.0" 
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
+         xsi:schemaLocation="https://www.mojohaus.org/VERSIONS/RULE/3.0.0 https://www.mojohaus.org/VERSIONS/RULE/3.0.0.xsd"
+         comparisonMethod="maven">
+  <ignoreVersions>
+    <ignoreVersion type="regex">(?i).*(alpha|beta|rc|m|preview|milestone|ea|cr|incubating|b\d+|m\d+|rc\d+|beta\d+|alpha\d+).*</ignoreVersion>
+  </ignoreVersions>
+</ruleset>

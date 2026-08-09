@@ -62,6 +62,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: catalyst-config
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: login-tls-secret
 ---
 apiVersion: v1
 kind: Service
@@ -110,6 +118,14 @@ spec:
           envFrom:
             - configMapRef:
                 name: catalyst-config
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: lobby-tls-secret
 ---
 apiVersion: v1
 kind: Service
@@ -246,3 +262,11 @@ spec:
           envFrom:
             - configMapRef:
                 name: catalyst-config
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: world-tls-secret

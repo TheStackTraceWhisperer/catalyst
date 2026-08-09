@@ -33,6 +33,20 @@
       <artifactId>netty-codec</artifactId>
       <version>4.1.100.Final</version>
     </dependency>
+
+    <!-- Netty QUIC codec — provides QuicSslContext/QuicSslContextBuilder used by TlsContextFactory -->
+    <dependency>
+      <groupId>io.netty.incubator</groupId>
+      <artifactId>netty-incubator-codec-classes-quic</artifactId>
+      <version>${netty.quic.version}</version>
+    </dependency>
+
+    <!-- Netty handler — provides SelfSignedCertificate, InsecureTrustManagerFactory for dev-mode fallback -->
+    <dependency>
+      <groupId>io.netty</groupId>
+      <artifactId>netty-handler</artifactId>
+      <version>4.1.100.Final</version>
+    </dependency>
     
     <!-- Lombok -->
     <dependency>
@@ -47,6 +61,14 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
       <version>${slf4j.version}</version>
+    </dependency>
+
+    <!-- Micronaut inject — needed for @ConfigurationProperties on TlsProperties interface -->
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-inject</artifactId>
+      <version>${micronaut.version}</version>
+      <scope>provided</scope>
     </dependency>
   </dependencies>
 </project>

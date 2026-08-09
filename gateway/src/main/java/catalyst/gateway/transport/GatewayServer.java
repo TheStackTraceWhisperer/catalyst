@@ -3,6 +3,8 @@ package catalyst.gateway.transport;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
 import catalyst.common.network.ServiceType;
+import catalyst.common.network.TlsContextFactory;
+import catalyst.common.network.TlsProperties;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.BackendClient;
 import io.netty.bootstrap.Bootstrap;
@@ -11,11 +13,9 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
-import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import jakarta.inject.Singleton;
 import java.net.InetSocketAddress;
@@ -29,6 +29,7 @@ import lombok.extern.slf4j.Slf4j;
 public final class GatewayServer {
 
     private final GatewayProperties props;
+    private final TlsProperties tlsProps;
     private final Map<ServiceType, BackendClient> clients = new ConcurrentHashMap<>();
     private final Map<BackendAddress, BackendClient> dynamicWorldClients = new ConcurrentHashMap<>();
 
@@ -36,13 +37,14 @@ public final class GatewayServer {
     private Channel bindChannel;
     private volatile boolean bound = false;
 
-    public GatewayServer(GatewayProperties props) {
+    public GatewayServer(GatewayProperties props, TlsProperties tlsProps) {
         this.props = props;
+        this.tlsProps = tlsProps;
         for (Map.Entry<ServiceType, GatewayProperties.BackendConfig> entry : props.getBackends().entrySet()) {
             ServiceType type = entry.getKey();
             GatewayProperties.BackendConfig config = entry.getValue();
             log.info("Configuring backend client for '{}' connecting to {}:{}", type, config.host(), config.port());
-            this.clients.put(type, new BackendClient(config.host(), config.port()));
+            this.clients.put(type, new BackendClient(config.host(), config.port(), tlsProps));
         }
     }
 
@@ -51,10 +53,7 @@ public final class GatewayServer {
     }
 
     public void start() throws Exception {
-        SelfSignedCertificate cert = new SelfSignedCertificate();
-        QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
-            .applicationProtocols(BackendClient.PROTOCOL)
-            .build();
+        QuicSslContext sslContext = TlsContextFactory.gatewayServerContext(tlsProps);
 
         group = new NioEventLoopGroup();
         io.netty.channel.ChannelHandler codec = new QuicServerCodecBuilder()
@@ -71,7 +70,7 @@ public final class GatewayServer {
                     ch.pipeline()
                         .addLast(new GatewayFrameDecoder())
                         .addLast(new GatewayFrameEncoder())
-                        .addLast(new RequestHandler(props, clients, dynamicWorldClients));
+                        .addLast(new RequestHandler(props, clients, dynamicWorldClients, tlsProps));
                 }
             })
             .build();

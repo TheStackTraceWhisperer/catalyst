@@ -1,0 +1,124 @@
+# ClusterIssuer: bootstrap self-signed issuer to create the CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: catalyst-selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+# Self-signed root CA certificate (10 years, isCA=true)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: catalyst-ca
+  namespace: default
+spec:
+  isCA: true
+  commonName: catalyst-ca
+  secretName: catalyst-ca-secret
+  duration: 87600h
+  issuerRef:
+    name: catalyst-selfsigned-issuer
+    kind: ClusterIssuer
+---
+# ClusterIssuer backed by the self-signed CA
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: catalyst-ca-issuer
+spec:
+  ca:
+    secretName: catalyst-ca-secret
+---
+# Gateway TLS certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-tls
+  namespace: default
+spec:
+  secretName: gateway-tls-secret
+  duration: 8760h
+  renewBefore: 720h
+  commonName: gateway-service
+  dnsNames:
+    - gateway-service
+    - gateway-service.default.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: catalyst-ca-issuer
+    kind: ClusterIssuer
+---
+# Login-service TLS certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: login-service-tls
+  namespace: default
+spec:
+  secretName: login-tls-secret
+  duration: 8760h
+  renewBefore: 720h
+  commonName: login-service
+  dnsNames:
+    - login-service
+    - login-service.default.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: catalyst-ca-issuer
+    kind: ClusterIssuer
+---
+# Lobby-service TLS certificate
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: lobby-service-tls
+  namespace: default
+spec:
+  secretName: lobby-tls-secret
+  duration: 8760h
+  renewBefore: 720h
+  commonName: lobby-service
+  dnsNames:
+    - lobby-service
+    - lobby-service.default.svc.cluster.local
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: catalyst-ca-issuer
+    kind: ClusterIssuer
+---
+# World-service TLS certificate (covers all zone DNS names)
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: world-service-tls
+  namespace: default
+spec:
+  secretName: world-tls-secret
+  duration: 8760h
+  renewBefore: 720h
+  commonName: world-service
+  dnsNames:
+    - world-service
+    - world-service.default.svc.cluster.local
+    - world-service-230
+    - world-service-231
+    - world-service-232
+    - world-service-233
+    - world-service-234
+    - world-service-235
+    - world-service-238
+    - world-service-239
+    - world-service-240
+  usages:
+    - server auth
+    - client auth
+  issuerRef:
+    name: catalyst-ca-issuer
+    kind: ClusterIssuer

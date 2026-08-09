@@ -12,3 +12,7 @@ catalyst:
   client:
     default-server-host: 127.0.0.1
     default-server-port: 35555
+  tls:
+    cert-path: ""
+    key-path: ""
+    ca-path: /certs/ca.crt

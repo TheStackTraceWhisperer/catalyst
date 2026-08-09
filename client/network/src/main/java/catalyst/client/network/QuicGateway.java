@@ -4,6 +4,8 @@ import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
+import catalyst.common.network.TlsContextFactory;
+import catalyst.common.network.TlsProperties;
 import catalyst.client.network.dispatch.ClientDispatcher;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
@@ -13,15 +15,12 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.SimpleChannelInboundHandler;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicClientCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
-import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -30,17 +29,22 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 @Slf4j
-@RequiredArgsConstructor
 public final class QuicGateway implements AutoCloseable {
     static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 
     private final ClientDispatcher clientDispatcher;
+    private final TlsProperties tlsProps;
     private EventLoopGroup group;
     private Channel udpChannel;
     private QuicChannel quicChannel;
     private String connectedHost;
     private int connectedPort;
+
+    public QuicGateway(ClientDispatcher clientDispatcher, TlsProperties tlsProps) {
+        this.clientDispatcher = clientDispatcher;
+        this.tlsProps = tlsProps;
+    }
 
     synchronized <T> T request(String host, int port, Object request, Class<T> responseType) throws IOException {
         try {
@@ -107,10 +111,7 @@ public final class QuicGateway implements AutoCloseable {
         }
         closeConnection();
 
-        QuicSslContext sslContext = QuicSslContextBuilder.forClient()
-            .trustManager(InsecureTrustManagerFactory.INSTANCE)
-            .applicationProtocols(PROTOCOL)
-            .build();
+        QuicSslContext sslContext = TlsContextFactory.clientContext(tlsProps);
 
         group = new NioEventLoopGroup(1);
         io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()

@@ -18,6 +18,10 @@ catalyst:
         policy: AUTHENTICATED
         host: localhost
         port: 35001
+  tls:
+    cert-path: /certs/tls.crt
+    key-path: /certs/tls.key
+    ca-path: /certs/ca.crt
 
 endpoints:
   health:

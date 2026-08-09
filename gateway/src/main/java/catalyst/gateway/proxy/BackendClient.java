@@ -3,17 +3,17 @@ package catalyst.gateway.proxy;
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.GatewayFrameDecoder;
 import catalyst.common.network.GatewayFrameEncoder;
+import catalyst.common.network.TlsContextFactory;
+import catalyst.common.network.TlsProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.ssl.util.InsecureTrustManagerFactory;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicClientCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
-import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import io.netty.incubator.codec.quic.QuicStreamType;
 import java.io.IOException;
@@ -22,23 +22,28 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 /** Internal client used by the gateway to forward GatewayFrame requests asynchronously to backends. */
 @Slf4j
-@RequiredArgsConstructor
 public final class BackendClient implements AutoCloseable {
     public static final String PROTOCOL = "catalyst-1";
     private static final long REQUEST_TIMEOUT_MS = 5_000L;
 
     private final String host;
     private final int port;
+    private final TlsProperties tlsProps;
     private final ReentrantLock connectionLock = new ReentrantLock();
 
     private EventLoopGroup group;
     private Channel udpChannel;
     private volatile QuicChannel quicChannel;
+
+    public BackendClient(String host, int port, TlsProperties tlsProps) {
+        this.host = host;
+        this.port = port;
+        this.tlsProps = tlsProps;
+    }
 
     /** Sends a GatewayFrame request asynchronously and returns a CompletableFuture containing the response. */
     public CompletableFuture<GatewayFrame> requestAsync(GatewayFrame frame, java.util.function.Consumer<catalyst.common.network.GatewayControlMessage> controlCallback) {
@@ -83,10 +88,7 @@ public final class BackendClient implements AutoCloseable {
 
             closeConnectionLocked();
 
-            QuicSslContext sslContext = QuicSslContextBuilder.forClient()
-                .trustManager(InsecureTrustManagerFactory.INSTANCE)
-                .applicationProtocols(PROTOCOL)
-                .build();
+            QuicSslContext sslContext = TlsContextFactory.backendClientContext(tlsProps);
 
             group = new NioEventLoopGroup(1);
             io.netty.channel.ChannelHandler codec = new QuicClientCodecBuilder()

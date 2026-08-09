@@ -86,6 +86,42 @@ k3d image import catalyst-postgres:17 \
 
 # 6. Apply Kubernetes manifests
 echo "[e2e] Applying Kubernetes manifests..."
+
+# Install cert-manager if not present
+if ! kubectl get ns cert-manager &>/dev/null; then
+  echo "[e2e] Installing cert-manager..."
+  kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.3/cert-manager.yaml
+  echo "[e2e] Waiting for cert-manager to be ready..."
+  kubectl rollout status deployment/cert-manager -n cert-manager --timeout=120s
+  kubectl rollout status deployment/cert-manager-webhook -n cert-manager --timeout=120s
+  kubectl rollout status deployment/cert-manager-cainjector -n cert-manager --timeout=120s
+fi
+
+# Apply TLS resources and wait for secrets to be provisioned
+kubectl apply -f k8s/04-tls.yaml
+echo "[e2e] Waiting for TLS secrets to be provisioned..."
+
+function wait_for_secret() {
+  local secret=$1
+  local max_attempts=30
+  local attempt=0
+  while [ $attempt -lt $max_attempts ]; do
+    if kubectl get secret "$secret" &>/dev/null; then
+      echo "[e2e] Secret $secret is ready."
+      return 0
+    fi
+    sleep 2
+    attempt=$((attempt + 1))
+  done
+  echo "[e2e] ERROR: Timeout waiting for secret $secret"
+  return 1
+}
+
+wait_for_secret gateway-tls-secret
+wait_for_secret login-tls-secret
+wait_for_secret lobby-tls-secret
+wait_for_secret world-tls-secret
+
 kubectl apply -f k8s/01-postgres.yaml
 kubectl apply -f k8s/02-microservices.yaml
 kubectl apply -f k8s/03-gateway.yaml

@@ -1,6 +1,8 @@
 package catalyst.server.world.transport;
 
 import catalyst.server.world.properties.ServerProperties;
+import catalyst.common.network.TlsContextFactory;
+import catalyst.common.network.TlsProperties;
 import io.netty.bootstrap.Bootstrap;
 import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
@@ -11,12 +13,10 @@ import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
-import io.netty.handler.ssl.util.SelfSignedCertificate;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
 import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
-import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
@@ -36,6 +36,7 @@ public final class QuicServerTransport {
     static final String PROTOCOL = "catalyst-1";
 
     private final ServerProperties props;
+    private final TlsProperties tlsProps;
     private catalyst.server.common.network.WorldRequestDispatcher dispatcher = (req, sessionId) -> {
         log.error("Dispatcher not set for request: {}", req.getClass().getSimpleName());
         return java.util.concurrent.CompletableFuture.completedFuture(null);
@@ -54,10 +55,7 @@ public final class QuicServerTransport {
     }
 
     public void start() throws Exception {
-        SelfSignedCertificate cert = new SelfSignedCertificate();
-        QuicSslContext sslContext = QuicSslContextBuilder.forServer(cert.key(), null, cert.cert())
-            .applicationProtocols("catalyst-1")
-            .build();
+        QuicSslContext sslContext = TlsContextFactory.backendServerContext(tlsProps);
 
         group = new NioEventLoopGroup();
         ChannelHandler codec = new QuicServerCodecBuilder()

@@ -3,6 +3,7 @@ package catalyst.gateway.transport;
 import catalyst.common.network.GatewayControlMessage;
 import catalyst.common.network.GatewayFrame;
 import catalyst.common.network.ServiceType;
+import catalyst.common.network.TlsProperties;
 import catalyst.gateway.properties.GatewayProperties;
 import catalyst.gateway.proxy.BackendClient;
 import io.netty.channel.Channel;
@@ -22,11 +23,13 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
     private final GatewayProperties props;
     private final Map<ServiceType, BackendClient> clients;
     private final Map<BackendAddress, BackendClient> dynamicWorldClients;
+    private final TlsProperties tlsProps;
 
-    public RequestHandler(GatewayProperties props, Map<ServiceType, BackendClient> clients, Map<BackendAddress, BackendClient> dynamicWorldClients) {
+    public RequestHandler(GatewayProperties props, Map<ServiceType, BackendClient> clients, Map<BackendAddress, BackendClient> dynamicWorldClients, TlsProperties tlsProps) {
         this.props = props;
         this.clients = clients;
         this.dynamicWorldClients = dynamicWorldClients;
+        this.tlsProps = tlsProps;
     }
 
     @Override
@@ -172,7 +175,7 @@ public final class RequestHandler extends ChannelInboundHandlerAdapter {
                 // Resolve the specific world server client dynamically
                 BackendClient targetClient = dynamicWorldClients.computeIfAbsent(address, key -> {
                     log.info("Opening new persistent internal connection to dynamic world backend: {}", key);
-                    return new BackendClient(key.host(), key.port());
+                    return new BackendClient(key.host(), key.port(), tlsProps);
                 });
                 parentChannel.attr(WORLD_CLIENT_KEY).set(targetClient);
             }

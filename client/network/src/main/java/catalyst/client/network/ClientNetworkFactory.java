@@ -1,6 +1,7 @@
 package catalyst.client.network;
 
 import catalyst.client.network.dispatch.ClientDispatcher;
+import catalyst.common.network.TlsProperties;
 import io.micronaut.context.annotation.Factory;
 import jakarta.inject.Singleton;
 
@@ -17,7 +18,7 @@ public class ClientNetworkFactory {
     }
 
     @Singleton
-    public QuicGateway quicGateway(ClientDispatcher clientDispatcher) {
-        return new QuicGateway(clientDispatcher);
+    public QuicGateway quicGateway(ClientDispatcher clientDispatcher, TlsProperties tlsProps) {
+        return new QuicGateway(clientDispatcher, tlsProps);
     }
 }

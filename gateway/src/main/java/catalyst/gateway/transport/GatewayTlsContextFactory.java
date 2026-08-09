@@ -26,7 +26,7 @@ public final class GatewayTlsContextFactory {
         return QuicSslContextBuilder
             .forClient()
             .keyManager(new File(tls.getKeyPath()), null, new File(tls.getCertPath()))
-            .trustManager(TlsProperties.getWrappedTrustManagers(tls.getCaPath())[0])
+            .trustManager(new File(tls.getCaPath()))
             .applicationProtocols(PROTOCOL)
             .build();
     }

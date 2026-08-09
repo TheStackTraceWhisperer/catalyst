@@ -44,10 +44,6 @@ spec:
   dnsNames:
     - gateway-service
     - gateway-service.default.svc.cluster.local
-    - localhost
-    - 127.0.0.1
-  ipAddresses:
-    - 127.0.0.1
   usages:
     - server auth
     - client auth

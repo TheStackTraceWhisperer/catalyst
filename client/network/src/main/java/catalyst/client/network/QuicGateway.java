@@ -268,7 +268,7 @@ public final class QuicGateway implements AutoCloseable {
     private QuicSslContext buildClientContext(TlsProperties tls) throws Exception {
         return QuicSslContextBuilder
             .forClient()
-            .trustManager(TlsProperties.getWrappedTrustManagers(tls.getCaPath())[0])
+            .trustManager(new File(tls.getCaPath()))
             .applicationProtocols(PROTOCOL)
             .build();
     }

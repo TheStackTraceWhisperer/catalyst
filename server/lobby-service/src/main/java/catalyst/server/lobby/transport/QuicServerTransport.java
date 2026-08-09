@@ -176,7 +176,7 @@ public final class QuicServerTransport {
         log.info("TLS: loading backend server context from {}", tlsProps.getCertPath());
         return QuicSslContextBuilder
             .forServer(new File(tlsProps.getKeyPath()), null, new File(tlsProps.getCertPath()))
-            .trustManager(TlsProperties.getWrappedTrustManagers(tlsProps.getCaPath())[0])
+            .trustManager(new File(tlsProps.getCaPath()))
             .clientAuth(ClientAuth.REQUIRE)
             .applicationProtocols(PROTOCOL)
             .build();

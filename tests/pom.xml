@@ -73,6 +73,23 @@
           </execution>
         </executions>
       </plugin>
+      <plugin>
+        <groupId>com.google.cloud.tools</groupId>
+        <artifactId>jib-maven-plugin</artifactId>
+        <configuration>
+          <skip>false</skip>
+          <to>
+            <image>catalyst-tests:latest</image>
+          </to>
+          <container>
+            <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
+            <mainClass>catalyst.tests.e2e.E2EValidationHarness</mainClass>
+            <jvmFlags>
+              <jvmFlag>--enable-native-access=ALL-UNNAMED</jvmFlag>
+            </jvmFlags>
+          </container>
+        </configuration>
+      </plugin>
     </plugins>
   </build>
 </project>

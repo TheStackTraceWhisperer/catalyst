@@ -1,0 +1,28 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalyst-e2e-test
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+        - name: e2e-test-runner
+          image: catalyst-tests:latest
+          imagePullPolicy: Never
+          args:
+            - "gateway-service"
+            - "35555"
+          env:
+            - name: JAVA_TOOL_OPTIONS
+              value: "-Dcatalyst.tls.ca-path=/certs/ca.crt"
+          volumeMounts:
+            - name: tls-certs
+              mountPath: /certs
+              readOnly: true
+      volumes:
+        - name: tls-certs
+          secret:
+            secretName: gateway-tls-secret
+      restartPolicy: Never
+  backoffLimit: 0

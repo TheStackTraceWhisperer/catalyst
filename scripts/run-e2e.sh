@@ -35,6 +35,8 @@ function cleanup {
     kubectl logs deployment/world-service --tail=100 || true
     echo "=== POSTGRES LOGS ==="
     kubectl logs deployment/postgres --tail=100 || true
+    echo "=== TEST HARNESS LOGS ==="
+    kubectl logs -l job-name=catalyst-e2e-test --all-containers=true || true
   fi
 
   if [[ "${CI:-false}" == "true" ]]; then
@@ -75,6 +77,7 @@ docker build -t catalyst-postgres:17 docker/postgres
 echo "[e2e] Compiling and containerizing microservices with Jib..."
 "${MVN}" -q -DskipTests clean package jib:dockerBuild
 
+
 # 5. Import images into k3d
 echo "[e2e] Importing images into k3d..."
 k3d image import catalyst-postgres:17 \
@@ -82,6 +85,7 @@ k3d image import catalyst-postgres:17 \
   catalyst-catalyst-lobby-service:latest \
   catalyst-catalyst-world-service:latest \
   catalyst-catalyst-gateway:latest \
+  catalyst-tests:latest \
   -c "${CLUSTER_NAME}"
 
 # 6. Apply Kubernetes manifests
@@ -139,11 +143,23 @@ kubectl rollout status deployment/lobby-service --timeout=90s
 kubectl rollout status deployment/world-service --timeout=90s
 kubectl rollout status deployment/gateway --timeout=90s
 
-# 8. Execute E2E harness
-echo "[e2e] Extracting CA certificate for host test client validation..."
-kubectl get secret catalyst-ca-secret -n cert-manager -o jsonpath='{.data.tls\.crt}' | base64 -d > tests/ca.crt
+# 8. Execute E2E harness inside the cluster
+echo "[e2e] Deploying E2E validation Job..."
+kubectl delete job catalyst-e2e-test --ignore-not-found=true
 
-echo "[e2e] Running protocol validation test client..."
-java -Dcatalyst.tls.ca-path=tests/ca.crt -Dcatalyst.tls.verify-host=gateway-service --enable-native-access=ALL-UNNAMED -jar tests/target/catalyst-tests-1.0-SNAPSHOT.jar 127.0.0.1 "${TEST_PORT}"
+kubectl apply -f k8s/05-test-job.yaml
+
+echo "[e2e] Waiting for E2E validation Job to complete..."
+if ! kubectl wait --for=condition=Complete job/catalyst-e2e-test --timeout=150s &>/dev/null; then
+  echo "[e2e] ERROR: Job failed or timed out. Fetching pod logs..."
+  kubectl logs -l job-name=catalyst-e2e-test --all-containers=true || true
+  exit 1
+fi
+
+echo "[e2e] Job completed successfully. Logs:"
+kubectl logs -l job-name=catalyst-e2e-test --all-containers=true
+
+echo "[e2e] Cleaning up test Job..."
+kubectl delete job catalyst-e2e-test
 
 echo "[e2e] E2E validation passed successfully!"

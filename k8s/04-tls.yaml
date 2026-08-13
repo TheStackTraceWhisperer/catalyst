@@ -17,6 +17,8 @@ spec:
   commonName: catalyst-ca
   secretName: catalyst-ca-secret
   duration: 87600h
+  privateKey:
+    encoding: PKCS8
   issuerRef:
     name: catalyst-selfsigned-issuer
     kind: ClusterIssuer
@@ -41,6 +43,8 @@ spec:
   duration: 8760h
   renewBefore: 720h
   commonName: gateway-service
+  privateKey:
+    encoding: PKCS8
   dnsNames:
     - gateway-service
     - gateway-service.default.svc.cluster.local
@@ -62,6 +66,8 @@ spec:
   duration: 8760h
   renewBefore: 720h
   commonName: login-service
+  privateKey:
+    encoding: PKCS8
   dnsNames:
     - login-service
     - login-service.default.svc.cluster.local
@@ -83,6 +89,8 @@ spec:
   duration: 8760h
   renewBefore: 720h
   commonName: lobby-service
+  privateKey:
+    encoding: PKCS8
   dnsNames:
     - lobby-service
     - lobby-service.default.svc.cluster.local
@@ -104,6 +112,8 @@ spec:
   duration: 8760h
   renewBefore: 720h
   commonName: world-service
+  privateKey:
+    encoding: PKCS8
   dnsNames:
     - world-service
     - world-service.default.svc.cluster.local

@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+
 <project xmlns="http://maven.apache.org/POM/4.0.0"
          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
          xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
   <modelVersion>4.0.0</modelVersion>
 
   <parent>
@@ -12,14 +14,42 @@
   </parent>
 
   <artifactId>catalyst-tests</artifactId>
-  <packaging>jar</packaging>
+  <packaging>${packaging}</packaging>
+
+  <properties>
+    <exec.mainClass>catalyst.tests.e2e.E2EValidationHarness</exec.mainClass>
+  </properties>
 
   <dependencies>
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-client-network</artifactId>
     </dependency>
-    <!-- Logging -->
+    <dependency>
+      <groupId>catalyst</groupId>
+      <artifactId>catalyst-common-dto</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>catalyst</groupId>
+      <artifactId>catalyst-common-network</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-inject</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.micronaut</groupId>
+      <artifactId>micronaut-runtime</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>jakarta.inject</groupId>
+      <artifactId>jakarta.inject-api</artifactId>
+      <scope>compile</scope>
+    </dependency>
+
     <dependency>
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
@@ -28,10 +58,14 @@
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
     </dependency>
-    <!-- Awaitility for robust async test assertions -->
+
     <dependency>
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.projectlombok</groupId>
+      <artifactId>lombok</artifactId>
     </dependency>
   </dependencies>
 
@@ -40,12 +74,10 @@
       <plugin>
         <groupId>io.micronaut.maven</groupId>
         <artifactId>micronaut-maven-plugin</artifactId>
-        <configuration>
-          <mainClass>catalyst.tests.e2e.E2EValidationHarness</mainClass>
-          <jvmArguments>
-            <jvmArgument>--enable-native-access=ALL-UNNAMED</jvmArgument>
-          </jvmArguments>
-        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
       </plugin>
     </plugins>
   </build>

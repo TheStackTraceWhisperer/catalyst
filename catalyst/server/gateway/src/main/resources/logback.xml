@@ -10,4 +10,5 @@
   <logger name="io.micronaut.context" level="DEBUG"/>
   <logger name="io.micronaut.context.env" level="DEBUG"/>
   <logger name="io.netty" level="WARN"/>
+  <logger name="catalyst" level="DEBUG"/>
 </configuration>

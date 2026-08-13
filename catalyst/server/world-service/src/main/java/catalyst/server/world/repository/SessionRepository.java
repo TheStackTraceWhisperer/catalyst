@@ -1,6 +1,6 @@
 package catalyst.server.world.repository;
 
-import catalyst.server.world.session.ZoneManager;
+//import catalyst.server.world.session.ZoneManager;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,7 +18,7 @@ import java.util.UUID;
 public class SessionRepository {
 
     private final DataSource dataSource;
-    private final ZoneManager zoneManager;
+    //private final ZoneManager zoneManager;
 
     public boolean hasActiveSession(long accountId) throws SQLException {
         try (Connection c = dataSource.getConnection();
@@ -52,7 +52,7 @@ public class SessionRepository {
             s.setInt(4, zoneId);
             s.executeUpdate();
         }
-        zoneManager.join(sessionId, zoneId);
+       // zoneManager.join(sessionId, zoneId);
         return sessionId;
     }
 
@@ -78,7 +78,7 @@ public class SessionRepository {
                 if (!rs.next()) return false;
             }
         }
-        zoneManager.leave(sessionId);
+        //zoneManager.leave(sessionId);
         return true;
     }
 
@@ -89,7 +89,9 @@ public class SessionRepository {
                 "SELECT session_id FROM accounts_sessions WHERE last_seen_at < NOW() - (? * INTERVAL '1 second')")) {
                 sel.setLong(1, timeoutSeconds);
                 try (ResultSet rs = sel.executeQuery()) {
-                    while (rs.next()) zoneManager.leave(rs.getString("session_id"));
+                    while (rs.next()) {
+                        //zoneManager.leave(rs.getString("session_id"));
+                    }
                 }
             }
             try (PreparedStatement del = c.prepareStatement(
@@ -105,6 +107,6 @@ public class SessionRepository {
     }
 
     public int getZonePopulation(int zoneId) {
-        return zoneManager.getPopulation(zoneId);
+        return 0;//return zoneManager.getPopulation(zoneId);
     }
 }

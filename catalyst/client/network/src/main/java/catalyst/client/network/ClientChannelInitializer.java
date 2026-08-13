@@ -20,6 +20,12 @@ public class ClientChannelInitializer extends ChannelInitializer<QuicStreamChann
   protected void initChannel(QuicStreamChannel ch) {
     ChannelPipeline pipeline = ch.pipeline();
 
+    // --- OUTBOUND (Writing to Gateway/Server) ---
+    // 2. Prepend 2-byte frame length header
+    pipeline.addLast(new LengthFieldPrepender(2));
+    // 1. DecodedPacket -> write 2-byte Ordinal & Fory payload
+    pipeline.addLast(new ForyEncoder());
+
     // --- INBOUND (Reading from Gateway/Server) ---
     // 1. Wait for complete frame (strip 2-byte length header)
     pipeline.addLast(new LengthFieldBasedFrameDecoder(65535, 0, 2, 0, 2));
@@ -27,11 +33,5 @@ public class ClientChannelInitializer extends ChannelInitializer<QuicStreamChann
     pipeline.addLast(new ForyDecoder());
     // 3. Immediate O(1) invocation of PacketHandler on EventLoop thread
     pipeline.addLast(new InboundPacketHandler(registry));
-
-    // --- OUTBOUND (Writing to Gateway/Server) ---
-    // 2. Prepend 2-byte frame length header
-    pipeline.addLast(new LengthFieldPrepender(2));
-    // 1. DecodedPacket -> write 2-byte Ordinal & Fory payload
-    pipeline.addLast(new ForyEncoder());
   }
 }

@@ -24,15 +24,15 @@ public class BackendChannelInitializer extends ChannelInitializer<QuicStreamChan
     pipeline.addLast(new GatewayFrameDecoder());
     pipeline.addLast(new GatewayFrameEncoder());
 
-    // 2. Unpack inner DecodedPacket over Fory
+    // 2. Outbound Response Encoding
+    pipeline.addLast(new LengthFieldPrepender(2));
+    pipeline.addLast(new ForyEncoder());
+
+    // 3. Unpack inner DecodedPacket over Fory
     pipeline.addLast(new LengthFieldBasedFrameDecoder(65535, 0, 2, 0, 2));
     pipeline.addLast(new ForyDecoder());
 
-    // 3. Shared O(1) Terminal Netty Handler
+    // 4. Shared O(1) Terminal Netty Handler
     pipeline.addLast(new InboundPacketHandler(packetRegistry));
-
-    // 4. Outbound Response Encoding
-    pipeline.addLast(new LengthFieldPrepender(2));
-    pipeline.addLast(new ForyEncoder());
   }
 }

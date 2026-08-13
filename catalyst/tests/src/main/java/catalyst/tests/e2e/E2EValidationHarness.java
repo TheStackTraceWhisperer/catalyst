@@ -10,10 +10,31 @@ import catalyst.common.network.DecodedPacket;
 import catalyst.common.network.PacketRegistry;
 import catalyst.common.network.PacketType;
 import catalyst.common.network.ResponseCode;
+import io.micronaut.runtime.Micronaut;
 
-public final class E2EValidationHarness {
+import jakarta.inject.Singleton;
+import lombok.extern.slf4j.Slf4j;
+
+import java.io.IOException;
+
+@Slf4j
+@Singleton
+public class E2EValidationHarness {
 
     public static void main(String[] args) {
+        // Start Micronaut context to satisfy dependency injection/logging if needed,
+        // and run the test sequence.
+        try (var context = Micronaut.run(E2EValidationHarness.class, args)) {
+            runTests(args);
+            System.exit(0);
+        } catch (Exception e) {
+            System.err.println("\nE2E Validation Failed: " + e.getMessage());
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    public static void runTests(String[] args) {
         String host = args.length > 0 ? args[0] : "localhost";
         int port = args.length > 1 ? Integer.parseInt(args[1]) : 35555;
 
@@ -133,12 +154,8 @@ public final class E2EValidationHarness {
             System.out.println("Cleanup completed successfully.");
 
             System.out.println("\n=== E2E Protocol Validation Harness Succeeded! ===");
-            System.exit(0);
-
-        } catch (Exception e) {
-            System.err.println("\nE2E Validation Failed: " + e.getMessage());
-            e.printStackTrace();
-            System.exit(1);
+        } catch (IOException e) {
+          throw new RuntimeException(e);
         }
     }
 }

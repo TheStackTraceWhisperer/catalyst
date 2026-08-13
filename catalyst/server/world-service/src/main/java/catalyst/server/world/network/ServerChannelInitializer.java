@@ -28,15 +28,15 @@ public class ServerChannelInitializer extends ChannelInitializer<QuicStreamChann
     pipeline.addLast(new GatewayFrameDecoder());
     pipeline.addLast(new GatewayFrameEncoder());
 
-    // 2. Unpack length-prefixed binary Apache Fory stream into DecodedPacket
+    // 2. Outbound encoding chain back to Gateway / Client
+    pipeline.addLast(new LengthFieldPrepender(2));
+    pipeline.addLast(new ForyEncoder());
+
+    // 3. Unpack length-prefixed binary Apache Fory stream into DecodedPacket
     pipeline.addLast(new LengthFieldBasedFrameDecoder(65535, 0, 2, 0, 2));
     pipeline.addLast(new ForyDecoder());
 
-    // 3. O(1) terminal packet handler router
+    // 4. O(1) terminal packet handler router
     pipeline.addLast(new InboundPacketHandler(packetRegistry));
-
-    // 4. Outbound encoding chain back to Gateway / Client
-    pipeline.addLast(new LengthFieldPrepender(2));
-    pipeline.addLast(new ForyEncoder());
   }
 }

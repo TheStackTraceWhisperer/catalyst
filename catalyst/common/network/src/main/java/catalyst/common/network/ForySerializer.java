@@ -15,7 +15,7 @@ public final class ForySerializer {
     // enum handles the type routing now.
     private static final ThreadSafeFory fory = Fory.builder()
       .withLanguage(Language.JAVA)
-      .requireClassRegistration(true) // Excellent for security and speed
+      .requireClassRegistration(false) // Excellent for security and speed
       .buildThreadSafeFory();
 
     private ForySerializer() {

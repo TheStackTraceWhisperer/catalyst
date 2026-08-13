@@ -50,7 +50,8 @@ fi
 
 # 4. Import built images into k3d
 echo "[e2e] Importing images into k3d..."
-k3d image import catalyst-postgres:17 \
+k3d image import \
+  catalyst-postgres:17 \
   catalyst-login-service:latest \
   catalyst-lobby-service:latest \
   catalyst-world-service:latest \
@@ -66,17 +67,23 @@ function cleanup_k8s {
     echo "=== KUBERNETES PODS STATUS ==="
     kubectl get pods || true
     echo "=== GATEWAY LOGS ==="
-    kubectl logs deployment/gateway --tail=100 || true
+    kubectl logs deployment/gateway --tail=1000 || true
+    kubectl logs deployment/gateway --tail=1000 -p 2>/dev/null || true
     echo "=== LOGIN SERVICE LOGS ==="
-    kubectl logs deployment/login-service --tail=100 || true
+    kubectl logs deployment/login-service --tail=1000 || true
+    kubectl logs deployment/login-service --tail=1000 -p 2>/dev/null || true
     echo "=== LOBBY SERVICE LOGS ==="
-    kubectl logs deployment/lobby-service --tail=100 || true
+    kubectl logs deployment/lobby-service --tail=1000 || true
+    kubectl logs deployment/lobby-service --tail=1000 -p 2>/dev/null || true
     echo "=== WORLD SERVICE LOGS ==="
-    kubectl logs deployment/world-service --tail=100 || true
+    kubectl logs deployment/world-service --tail=1000 || true
+    kubectl logs deployment/world-service --tail=1000 -p 2>/dev/null || true
     echo "=== POSTGRES LOGS ==="
-    kubectl logs deployment/postgres --tail=100 || true
+    kubectl logs deployment/postgres --tail=1000 || true
+    kubectl logs deployment/postgres --tail=1000 -p 2>/dev/null || true
     echo "=== TEST HARNESS LOGS ==="
-    kubectl logs -l job-name=catalyst-e2e-test --all-containers=true || true
+    kubectl logs -l job-name=catalyst-e2e-test --all-containers=true --tail=1000 || true
+    kubectl logs -l job-name=catalyst-e2e-test --all-containers=true --tail=1000 -p 2>/dev/null || true
   fi
 
   if [[ "${CI:-false}" == "true" ]]; then

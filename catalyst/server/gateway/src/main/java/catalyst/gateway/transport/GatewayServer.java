@@ -69,13 +69,13 @@ public final class GatewayServer {
               @Override
               protected void initChannel(QuicStreamChannel ch) {
                   ch.pipeline()
-                    // Public client decoder chain
+                    // Public client encoder chain (outbound)
+                    .addLast(new LengthFieldPrepender(2))
+                    .addLast(new ForyEncoder())
+                    // Public client decoder chain (inbound)
                     .addLast(new LengthFieldBasedFrameDecoder(65535, 0, 2, 0, 2))
                     .addLast(new ForyDecoder())
-                    .addLast(new RequestHandler(props, clients, dynamicWorldClients, tlsProps))
-                    // Public client encoder chain
-                    .addLast(new LengthFieldPrepender(2))
-                    .addLast(new ForyEncoder());
+                    .addLast(new RequestHandler(props, clients, dynamicWorldClients, tlsProps));
               }
           })
           .build();

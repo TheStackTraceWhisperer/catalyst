@@ -23,6 +23,6 @@ public interface TlsProperties {
      * Path to the CA certificate bundle used to verify peers.
      * Mounted from the Kubernetes Secret at /certs/ca.crt
      */
-    @Bindable(defaultValue = "/certs/ca.crt")
+    //@Bindable(defaultValue = "/certs/ca.crt")
     String getCaPath();
 }

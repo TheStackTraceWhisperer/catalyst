@@ -1,8 +1,9 @@
 package catalyst.server.world.repository;
 
-import catalyst.common.dto.world.CharacterIdentity;
+import catalyst.server.common.model.CharacterSpawnState;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -16,7 +17,7 @@ public class CharacterRepository {
 
     private final DataSource dataSource;
 
-    public Optional<CharacterIdentity> findActiveByIdAndAccount(long characterId, long accountId) throws SQLException {
+    public Optional<CharacterSpawnState> findActiveByIdAndAccount(long characterId, long accountId) throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement s = c.prepareStatement("""
                 SELECT id, name, home_zone_id, home_x, home_y, home_z, home_rot,
@@ -27,12 +28,12 @@ public class CharacterRepository {
             s.setLong(2, accountId);
             try (ResultSet rs = s.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
-                return Optional.of(new CharacterIdentity(
-                    Long.toString(rs.getLong("id")), rs.getString("name"),
-                    rs.getInt("home_zone_id"), rs.getFloat("home_x"), rs.getFloat("home_y"),
-                    rs.getFloat("home_z"), rs.getFloat("home_rot"),
-                    rs.getInt("current_zone_id"), rs.getFloat("current_x"), rs.getFloat("current_y"),
-                    rs.getFloat("current_z"), rs.getFloat("current_rot")));
+                return Optional.of(new CharacterSpawnState(
+                  rs.getLong("id"), rs.getString("name"),
+                  rs.getInt("home_zone_id"), rs.getFloat("home_x"), rs.getFloat("home_y"),
+                  rs.getFloat("home_z"), rs.getFloat("home_rot"),
+                  rs.getInt("current_zone_id"), rs.getFloat("current_x"), rs.getFloat("current_y"),
+                  rs.getFloat("current_z"), rs.getFloat("current_rot")));
             }
         }
     }

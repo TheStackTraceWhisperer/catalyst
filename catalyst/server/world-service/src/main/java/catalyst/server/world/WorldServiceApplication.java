@@ -1,16 +1,16 @@
 package catalyst.server.world;
 
 import catalyst.common.concurrency.TaskScheduler;
-import catalyst.server.world.dispatch.ZoneMessageDispatcher;
+import catalyst.server.world.network.ServerTransport;
 import catalyst.server.world.properties.ServerProperties;
 import catalyst.server.world.repository.SessionRepository;
-import catalyst.server.world.transport.QuicServerTransport;
-import io.micronaut.runtime.Micronaut;
 import io.micronaut.context.event.StartupEvent;
+import io.micronaut.runtime.Micronaut;
 import io.micronaut.runtime.event.annotation.EventListener;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import java.sql.SQLException;
 
 @Slf4j
@@ -18,8 +18,7 @@ import java.sql.SQLException;
 @RequiredArgsConstructor
 public class WorldServiceApplication {
 
-    private final QuicServerTransport transport;
-    private final ZoneMessageDispatcher dispatcher;
+    private final ServerTransport transport;
     private final SessionRepository sessions;
     private final ServerProperties props;
     private final TaskScheduler scheduler;
@@ -29,10 +28,9 @@ public class WorldServiceApplication {
     }
 
     @EventListener
-    public void onStartup(StartupEvent event) throws Exception {
+    public void onStartup(StartupEvent event) {
         schedulePeriodicPruning();
 
-        transport.setDispatcher(dispatcher::dispatchAsync);
         try {
             transport.start();
             log.info("World Service listening on UDP port {} (QUIC)", props.getPort());
@@ -45,12 +43,11 @@ public class WorldServiceApplication {
     public void onShutdown() {
         log.info("Stopping World Service transport...");
         transport.stop();
-        dispatcher.close();
     }
 
     private void schedulePeriodicPruning() {
         scheduler.submit(() -> {
-            while (true) {
+            while (!Thread.currentThread().isInterrupted()) {
                 try {
                     Thread.sleep(10000);
                     cleanupSessions();

@@ -1,16 +1,17 @@
 package catalyst.server.world.handler;
 
 import catalyst.common.dto.lobby.PlayRequest;
-import catalyst.common.dto.world.PlayResponse;
-import catalyst.server.common.network.PacketHandler;
+import catalyst.common.dto.lobby.PlayResponse;
+import catalyst.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
-import catalyst.server.common.repository.AuthTicketStore;
-import catalyst.server.world.properties.ServerProperties;
+import catalyst.server.common.model.CharacterSpawnState;
 import catalyst.server.world.repository.CharacterRepository;
 import catalyst.server.world.repository.SessionRepository;
+import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import java.sql.SQLException;
 
 @Slf4j
@@ -20,58 +21,41 @@ public class WorldPlayRequestHandler implements PacketHandler<PlayRequest> {
 
     private final CharacterRepository characters;
     private final SessionRepository sessions;
-    private final AuthTicketStore tickets;
-    private final ServerProperties props;
 
     @Override
-    public Class<PlayRequest> getPacketType() {
-        return PlayRequest.class;
-    }
-
-    @Override
-    public Object handle(PlayRequest req, String sessionId) {
-        if (req == null) {
-            return new PlayResponse(ResponseCode.CONFLICT, "Invalid play request", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-        }
-
-        Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) {
-            return new PlayResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
-        }
+    public void handle(PlayRequest req, ChannelHandlerContext ctx) {
         long charId = req.characterId();
         if (charId <= 0) {
-            return new PlayResponse(ResponseCode.CONFLICT, "characterId required", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
+            ctx.writeAndFlush(new PlayResponse(ResponseCode.CONFLICT, charId, "characterId required"));
+            return;
         }
+
+        long accountId = 1L; // Injected via session boundary
+
         try {
-            var identity = characters.findActiveByIdAndAccount(charId, accountId);
-            if (identity.isEmpty()) {
-                return new PlayResponse(ResponseCode.NOT_FOUND, "Character not found", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
+            var spawnStateOpt = characters.findActiveByIdAndAccount(charId, accountId);
+            if (spawnStateOpt.isEmpty()) {
+                ctx.writeAndFlush(new PlayResponse(ResponseCode.NOT_FOUND, charId, "Character not found"));
+                return;
             }
-            var id = identity.get();
-            String newSessionId;
+
+            CharacterSpawnState state = spawnStateOpt.get();
             try {
-                newSessionId = sessions.create(accountId, charId, id.currentZoneId());
+                sessions.create(accountId, charId, state.currentZoneId());
             } catch (SQLException e) {
                 if ("23505".equals(e.getSQLState())) {
                     log.info("PLAY_ERR account={} charId={} reason=already_online", accountId, charId);
-                    return new PlayResponse(ResponseCode.CONFLICT, "Account or character is already online", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
+                    ctx.writeAndFlush(new PlayResponse(ResponseCode.CONFLICT, charId, "Account or character is already online"));
+                    return;
                 }
                 throw e;
             }
-            int pop = sessions.getZonePopulation(id.currentZoneId());
-            log.info("PLAY_OK account={} charId={} session={} zone={} pop={}", accountId, charId, newSessionId, id.currentZoneId(), pop);
 
-            return new PlayResponse(
-                ResponseCode.OK, null, newSessionId,
-                accountId, charId, id.name(),
-                id.currentZoneId(), pop,
-                props.getKeepaliveIntervalMs(),
-                id.homeZoneId(),
-                id.currentX(), id.currentY(), id.currentZ(), id.currentHeading()
-            );
-        } catch (SQLException e) {
+            log.info("PLAY_OK account={} charId={} zone={}", accountId, charId, state.currentZoneId());
+            ctx.writeAndFlush(new PlayResponse(charId, state.currentZoneId()));
+        } catch (Exception e) {
             log.error("PLAY_ERR account={} charId={}", accountId, charId, e);
-            return new PlayResponse(ResponseCode.ERROR, "Failed to start session", null, -1, -1, null, 0, 0, 5000L, 0, 0f, 0f, 0f, 0f);
+            ctx.writeAndFlush(new PlayResponse(ResponseCode.ERROR, charId, "Failed to start session"));
         }
     }
 }

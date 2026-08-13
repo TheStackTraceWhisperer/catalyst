@@ -2,45 +2,35 @@ package catalyst.server.world.handler;
 
 import catalyst.common.dto.world.LogoutRequest;
 import catalyst.common.dto.world.LogoutResponse;
-import catalyst.server.common.network.GatewayControlMessage;
-import catalyst.server.common.network.PacketHandler;
+import catalyst.common.network.ForySerializer;
+import catalyst.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
-import catalyst.server.world.repository.SessionRepository;
+import catalyst.common.network.ServiceType;
+import catalyst.server.common.network.GatewayControlMessage;
+import catalyst.server.common.network.GatewayFrame;
+import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import java.sql.SQLException;
 
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
 public class WorldLogoutRequestHandler implements PacketHandler<LogoutRequest> {
 
-    private final SessionRepository sessions;
-
     @Override
-    public Class<LogoutRequest> getPacketType() {
-        return LogoutRequest.class;
-    }
-
-    @Override
-    public Object handle(LogoutRequest req, String sessionId) {
-        sessionId = normalize(sessionId);
-        if (sessionId.isBlank()) {
-            return new LogoutResponse("-", ResponseCode.CONFLICT, "Missing sessionId");
-        }
+    public void handle(LogoutRequest req, ChannelHandlerContext ctx) {
         try {
-            sessions.delete(sessionId);
-            log.info("LOGOUT session={}", sessionId);
-            return new Object[] {
-                new GatewayControlMessage("logout_success", sessionId, null),
-                new LogoutResponse(sessionId, ResponseCode.OK, null)
-            };
-        } catch (SQLException e) {
-            log.error("LOGOUT_ERR session={}", sessionId, e);
-            return new LogoutResponse(null, ResponseCode.ERROR, "Failed to close session");
+            // 1. Emit GatewayControlMessage("logout_success") so Gateway resets session state
+            GatewayControlMessage controlSignal = new GatewayControlMessage("logout_success");
+            byte[] controlBytes = ForySerializer.serialize(controlSignal);
+            ctx.write(new GatewayFrame(ServiceType.CONTROL, "", controlBytes));
+
+            // 2. Return LogoutResponse
+            ctx.writeAndFlush(new LogoutResponse(ResponseCode.OK, null));
+        } catch (Exception e) {
+            log.error("Failed to process logout request", e);
+            ctx.writeAndFlush(new LogoutResponse(ResponseCode.ERROR, "Failed to terminate session"));
         }
     }
-
-    private String normalize(String v) { return v == null ? "" : v.trim(); }
 }

@@ -1,6 +1,6 @@
 package catalyst.server.world.health;
 
-import catalyst.server.world.transport.QuicServerTransport;
+import catalyst.server.world.network.ServerTransport;
 import io.micronaut.management.health.indicator.HealthIndicator;
 import io.micronaut.management.health.indicator.HealthResult;
 import jakarta.inject.Singleton;
@@ -12,7 +12,7 @@ import lombok.RequiredArgsConstructor;
 @RequiredArgsConstructor
 @Singleton
 public class WorldHealthIndicator implements HealthIndicator {
-    private final QuicServerTransport transport;
+    private final ServerTransport transport;
 
     @Override
     public Publisher<HealthResult> getResult() {

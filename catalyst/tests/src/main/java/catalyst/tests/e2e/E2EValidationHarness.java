@@ -1,80 +1,80 @@
 package catalyst.tests.e2e;
 
+import catalyst.client.network.ClientChannelInitializer;
 import catalyst.client.network.ClientTransport;
-import catalyst.client.network.dispatch.ClientDispatcher;
-import catalyst.common.network.ResponseCode;
 import catalyst.client.network.ClientTransportService;
-import catalyst.common.dto.login.*;
 import catalyst.common.dto.lobby.*;
+import catalyst.common.dto.login.*;
 import catalyst.common.dto.world.*;
-
-import static org.awaitility.Awaitility.await;
-import java.time.Duration;
-import java.util.concurrent.atomic.AtomicReference;
+import catalyst.common.network.DecodedPacket;
+import catalyst.common.network.PacketRegistry;
+import catalyst.common.network.PacketType;
+import catalyst.common.network.ResponseCode;
 
 public final class E2EValidationHarness {
 
     public static void main(String[] args) {
         String host = args.length > 0 ? args[0] : "localhost";
         int port = args.length > 1 ? Integer.parseInt(args[1]) : 35555;
-        
+
         System.out.println("=== Starting E2E Protocol Validation Harness ===");
         System.out.println("Target: " + host + ":" + port);
 
-        ClientDispatcher dispatcher = new ClientDispatcher();
         final String caPath = System.getProperty("catalyst.tls.ca-path", "");
         catalyst.common.network.TlsProperties devTls = new catalyst.common.network.TlsProperties() {
             @Override public String getCertPath() { return ""; }
             @Override public String getKeyPath() { return ""; }
             @Override public String getCaPath() { return caPath; }
         };
-        ClientTransport gateway = new ClientTransport(dispatcher, devTls);
-        try (ClientTransportService service = new ClientTransportService(gateway)) {
-            // Register gateway host and port once
+
+        PacketRegistry packetRegistry = new PacketRegistry();
+        ClientChannelInitializer channelInitializer = new ClientChannelInitializer(packetRegistry);
+        ClientTransport transport = new ClientTransport(channelInitializer, devTls);
+
+        try (ClientTransportService service = new ClientTransportService(transport)) {
             service.connect(host, port);
 
             // 1. LOGIN
             System.out.println("\nStep 1: Sending LOGIN for dev/dev...");
-            var loginResp = service.request(new LoginRequest("dev", "dev"), LoginResponse.class);
+            var loginPacket = new DecodedPacket(PacketType.LOGIN_REQUEST, new LoginRequest("dev", "dev"));
+            LoginResponse loginResp = service.request(loginPacket, LoginResponse.class);
             System.out.println("Login Response: " + loginResp);
             if (ResponseCode.OK != loginResp.code()) {
-                throw new AssertionError("LOGIN failed: " + loginResp.message());
+                throw new AssertionError("LOGIN failed: " + loginResp.errorMessage());
             }
-            String authToken = loginResp.authToken();
-            System.out.println("AuthToken acquired: " + authToken);
+            long accountId = loginResp.accountId();
+            System.out.println("Account ID acquired: " + accountId);
 
             // 2. CHAR_CREATE
             System.out.println("\nStep 2: Sending CHAR_CREATE...");
-            String charName = "EeeTest" + 
-                (char)('A' + new java.util.Random().nextInt(26)) + 
-                (char)('A' + new java.util.Random().nextInt(26)) + 
-                (char)('A' + new java.util.Random().nextInt(26));
-            var createResp = service.request(
-                new CharCreateRequest(authToken, charName, 1, 1, 3, 1, "0"), CharCreateResponse.class
+            String charName = "EeeTest" +
+              (char)('A' + new java.util.Random().nextInt(26)) +
+              (char)('A' + new java.util.Random().nextInt(26)) +
+              (char)('A' + new java.util.Random().nextInt(26));
+            var createPacket = new DecodedPacket(
+              PacketType.CHAR_CREATE_REQUEST,
+              new CharCreateRequest(charName, 1, 1, 3, 1, "0")
             );
+            CharCreateResponse createResp = service.request(createPacket, CharCreateResponse.class);
             System.out.println("Create Response: " + createResp);
             if (ResponseCode.OK != createResp.code()) {
-                throw new AssertionError("CHAR_CREATE failed: " + createResp.message());
+                throw new AssertionError("CHAR_CREATE failed: " + createResp.errorMessage());
             }
-            String newCharId = Long.toString(createResp.characterId());
+            long newCharId = createResp.characterId();
             System.out.println("Created character: Name=" + charName + " ID=" + newCharId);
 
-            // 3. CHAR_LIST verification
+            // 3. CHAR_LIST Verification
             System.out.println("\nStep 3: Sending CHAR_LIST verification...");
-            var charListResp = service.request(new CharListRequest(authToken), CharListResponse.class);
+            var listPacket = new DecodedPacket(PacketType.CHAR_LIST_REQUEST, new CharListRequest());
+            CharListResponse charListResp = service.request(listPacket, CharListResponse.class);
             if (ResponseCode.OK != charListResp.code()) {
                 throw new AssertionError("CHAR_LIST failed: " + charListResp.code());
             }
             System.out.println("Summaries retrieved: " + charListResp.characters().size());
             boolean found = false;
-            for (var c : charListResp.characters()) {
-                String nationStr = switch (c.nation()) {
-                    case 0 -> "Sandy";
-                    case 1 -> "Bastok";
-                    default -> "Windurst";
-                };
-                System.out.println(" - Char: ID=" + c.id() + " Name=" + c.name() + " Zone=" + nationStr);
-                if (c.id().equals(newCharId)) {
+            for (CharacterSummary c : charListResp.characters()) {
+                System.out.println(" - Char: ID=" + c.characterId() + " Name=" + c.name() + " Zone=" + c.zoneId());
+                if (c.characterId() == newCharId) {
                     found = true;
                 }
             }
@@ -85,60 +85,50 @@ public final class E2EValidationHarness {
 
             // 4. CHAR_SELECT
             System.out.println("\nStep 4: Sending CHAR_SELECT...");
-            var selectResp = service.request(new CharSelectRequest(authToken, Long.parseLong(newCharId)), CharSelectResponse.class);
+            var selectPacket = new DecodedPacket(PacketType.CHAR_SELECT_REQUEST, new CharSelectRequest(newCharId));
+            CharSelectResponse selectResp = service.request(selectPacket, CharSelectResponse.class);
             System.out.println("Select Response: " + selectResp);
             if (ResponseCode.OK != selectResp.code()) {
-                throw new AssertionError("CHAR_SELECT failed: " + selectResp.message());
+                throw new AssertionError("CHAR_SELECT failed: " + selectResp.errorMessage());
             }
 
             // 5. PLAY
             System.out.println("\nStep 5: Sending PLAY...");
-            var playResp = service.request(new PlayRequest(authToken, Long.parseLong(newCharId)), PlayResponse.class);
+            var playPacket = new DecodedPacket(PacketType.PLAY_REQUEST, new PlayRequest(newCharId));
+            PlayResponse playResp = service.request(playPacket, PlayResponse.class);
             System.out.println("Play Response: " + playResp);
             if (ResponseCode.OK != playResp.code()) {
-                throw new AssertionError("PLAY failed: " + playResp.message());
+                throw new AssertionError("PLAY failed: " + playResp.errorMessage());
             }
-            String sessionId = playResp.sessionId();
-            System.out.println("Session ID acquired: " + sessionId);
+            System.out.println("Entered zone: " + playResp.targetZoneId());
 
-            // 6. PING/PONG validation
+            // 6. PING/PONG Validation
             System.out.println("\nStep 6: Sending PING/PONG validation...");
-            service.sendAsync(new PingRequest());
-            
-            AtomicReference<PingResponse> pingRespRef = new AtomicReference<>();
-            await().atMost(Duration.ofSeconds(5))
-                   .pollInterval(Duration.ofMillis(50))
-                   .until(() -> {
-                       Object pkt = dispatcher.pollNextPacket();
-                       if (pkt instanceof PingResponse pr) {
-                           pingRespRef.set(pr);
-                           return true;
-                       }
-                       return false;
-                   });
-            
-            PingResponse pingResp = pingRespRef.get();
-            System.out.println("Ping Response (Async): " + pingResp);
-            if (!"PONG".equals(pingResp.type())) {
+            var pingPacket = new DecodedPacket(PacketType.PING_REQUEST, new PingRequest());
+            PingResponse pingResp = service.request(pingPacket, PingResponse.class);
+            System.out.println("Ping Response: " + pingResp);
+            if (ResponseCode.OK != pingResp.code()) {
                 throw new AssertionError("PING/PONG failed!");
             }
             System.out.println("PING/PONG validation succeeded.");
 
             // 7. LOGOUT
             System.out.println("\nStep 7: Sending LOGOUT...");
-            var logoutResp = service.request(new LogoutRequest(), LogoutResponse.class);
+            var logoutPacket = new DecodedPacket(PacketType.LOGOUT_REQUEST, new LogoutRequest());
+            LogoutResponse logoutResp = service.request(logoutPacket, LogoutResponse.class);
             System.out.println("Logout Response: " + logoutResp);
-            if (logoutResp.sessionId() == null) {
+            if (ResponseCode.OK != logoutResp.code()) {
                 throw new AssertionError("LOGOUT failed!");
             }
             System.out.println("LOGOUT succeeded.");
 
             // 8. Cleanup Character
             System.out.println("\nStep 8: Cleanup character...");
-            var deleteResp = service.request(new CharDeleteRequest(authToken, Long.parseLong(newCharId)), CharDeleteResponse.class);
+            var deletePacket = new DecodedPacket(PacketType.CHAR_DELETE_REQUEST, new CharDeleteRequest(newCharId));
+            CharDeleteResponse deleteResp = service.request(deletePacket, CharDeleteResponse.class);
             System.out.println("Delete Response: " + deleteResp);
             if (ResponseCode.OK != deleteResp.code()) {
-                throw new AssertionError("Character cleanup failed!");
+                throw new AssertionError("Character cleanup failed: " + deleteResp.errorMessage());
             }
             System.out.println("Cleanup completed successfully.");
 

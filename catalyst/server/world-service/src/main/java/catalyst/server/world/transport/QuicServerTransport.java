@@ -6,7 +6,6 @@ import io.netty.handler.ssl.ClientAuth;
 import io.netty.incubator.codec.quic.QuicSslContextBuilder;
 import java.io.File;
 import io.netty.bootstrap.Bootstrap;
-import io.netty.buffer.ByteBuf;
 import io.netty.channel.Channel;
 import io.netty.channel.ChannelHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -16,20 +15,19 @@ import io.netty.channel.EventLoopGroup;
 import io.netty.channel.nio.NioEventLoopGroup;
 import io.netty.channel.socket.nio.NioDatagramChannel;
 import io.netty.incubator.codec.quic.InsecureQuicTokenHandler;
-import io.netty.incubator.codec.quic.QuicChannel;
 import io.netty.incubator.codec.quic.QuicServerCodecBuilder;
 import io.netty.incubator.codec.quic.QuicSslContext;
 import io.netty.incubator.codec.quic.QuicStreamChannel;
 import java.net.InetSocketAddress;
 import java.util.concurrent.TimeUnit;
-import java.util.function.Function;
+
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import catalyst.common.network.ForyDecoder;
 import catalyst.common.network.ForyEncoder;
-import catalyst.common.network.GatewayFrameDecoder;
-import catalyst.common.network.GatewayFrameEncoder;
+import catalyst.server.common.network.GatewayFrameDecoder;
+import catalyst.server.common.network.GatewayFrameEncoder;
 
 @Slf4j
 @Singleton

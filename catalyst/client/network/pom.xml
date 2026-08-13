@@ -18,17 +18,14 @@
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-common-network</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-common-concurrency</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-common-dto</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <!-- Micronaut -->
     <dependency>
@@ -56,23 +53,14 @@
     <dependency>
       <groupId>io.netty.incubator</groupId>
       <artifactId>netty-incubator-codec-classes-quic</artifactId>
-      <version>${netty.quic.version}</version>
     </dependency>
     <dependency>
       <groupId>io.netty.incubator</groupId>
       <artifactId>netty-incubator-codec-native-quic</artifactId>
-      <version>${netty.quic.version}</version>
       <classifier>linux-x86_64</classifier>
       <scope>runtime</scope>
     </dependency>
   </dependencies>
 
-  <build>
-    <plugins>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-      </plugin>
-    </plugins>
-  </build>
+
 </project>

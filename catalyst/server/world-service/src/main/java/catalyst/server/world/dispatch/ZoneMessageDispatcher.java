@@ -42,11 +42,18 @@ public class ZoneMessageDispatcher implements AutoCloseable {
         startZoneTickLoop();
     }
 
-    /**
-     * Enqueues the request payload and returns a CompletableFuture
-     * to be completed during the next tick processing.
-     */
     public CompletableFuture<Object> dispatchAsync(Object payload, String sessionId) {
+        PacketHandler<?> handler = handlerRegistry.get(payload.getClass());
+        if (handler != null && handler.isImmediate()) {
+            try {
+                Object response = invokeHandler(handler, payload, sessionId);
+                return CompletableFuture.completedFuture(response);
+            } catch (Throwable t) {
+                log.error("Immediate handler execution failed for packet: {}", payload.getClass().getSimpleName(), t);
+                return CompletableFuture.failedFuture(t);
+            }
+        }
+
         CompletableFuture<Object> future = new CompletableFuture<>();
         zoneQueue.offer(new QueuedCommand(payload, sessionId, future));
         return future;

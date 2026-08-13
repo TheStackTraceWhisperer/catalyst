@@ -1,10 +1,15 @@
 package catalyst.common.dto.login;
 
-import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.login.LoginGatewayMessage;
-
-public record LoginRequest(
-    String username,
-    String password
-) implements LoginGatewayMessage {
+/**
+ * Client authentication request.
+ *
+ * @param username Target user account username.
+ * @param password Raw or hashed credentials supplied by the client.
+ */
+public record LoginRequest(String username, String password) {
+  public LoginRequest {
+    if (username != null) {
+      username = username.trim();
+    }
+  }
 }

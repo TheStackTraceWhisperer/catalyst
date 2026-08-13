@@ -6,7 +6,7 @@
 
 ## Problem
 
-The current `QuicGatewayService` establishes a single QUIC connection via `connect(host, port)` on
+The current `ClientTransportService` establishes a single QUIC connection via `connect(host, port)` on
 login and reuses it for the entire session. There is no handling for:
 
 - The underlying UDP connection dropping mid-session (e.g., network switch, sleep/wake).
@@ -28,7 +28,7 @@ login and reuses it for the entire session. There is no handling for:
     displayed in the login panel (e.g., "Connection lost. Please log in again.").
 
 ### Reconnect / Re-auth
-- `QuicGatewayService` should clear its stored `host`, `port`, and internal channel state on
+- `ClientTransportService` should clear its stored `host`, `port`, and internal channel state on
   disconnect so a fresh `connect(...)` call re-establishes cleanly.
 - Optionally: implement automatic re-authentication using a stored auth token if the server
   supports token refresh.

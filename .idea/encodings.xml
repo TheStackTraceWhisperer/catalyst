@@ -1,6 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/catalyst/client/application/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/application/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/engine/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/engine/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/network/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/network/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/client/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/concurrency/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/concurrency/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/dto/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/dto/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/network/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/network/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/gateway/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/gateway/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/lobby-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/lobby-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/login-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/login-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/server-common/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/server-common/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/world-service/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/server/world-service/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/tests/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/catalyst/tests/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
   </component>

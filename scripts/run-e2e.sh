@@ -74,17 +74,17 @@ fi
 echo "[e2e] Building postgres image..."
 docker build -t catalyst-postgres:17 docker/postgres
 
-echo "[e2e] Compiling and containerizing microservices with Jib..."
-"${MVN}" -f catalyst/pom.xml -q -DskipTests clean package jib:dockerBuild
+echo "[e2e] Compiling and containerizing microservices via Micronaut's built-in packaging..."
+"${MVN}" -f catalyst/pom.xml -q -DskipTests clean package -Dpackaging=docker
 
 
 # 5. Import images into k3d
 echo "[e2e] Importing images into k3d..."
 k3d image import catalyst-postgres:17 \
-  catalyst-catalyst-login-service:latest \
-  catalyst-catalyst-lobby-service:latest \
-  catalyst-catalyst-world-service:latest \
-  catalyst-catalyst-gateway:latest \
+  catalyst-login-service:latest \
+  catalyst-lobby-service:latest \
+  catalyst-world-service:latest \
+  catalyst-gateway:latest \
   catalyst-tests:latest \
   -c "${CLUSTER_NAME}"
 

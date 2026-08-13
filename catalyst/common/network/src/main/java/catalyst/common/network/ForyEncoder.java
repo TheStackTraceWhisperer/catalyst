@@ -1,24 +1,33 @@
 package catalyst.common.network;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
-import io.netty.handler.codec.MessageToMessageEncoder;
-import lombok.extern.slf4j.Slf4j;
-import java.util.List;
+import io.netty.handler.codec.MessageToByteEncoder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
- * Netty encoder that serializes outbound {@link GatewayMessage} objects using Apache Fory
- * and wraps them in a {@link GatewayFrame} with the appropriate routing flag.
+ * High-performance encoder that translates a routed Envelope into raw bytes.
+ * Expects a LengthFieldPrepender downstream in the pipeline to add the frame size.
  */
-@Slf4j
-public final class ForyEncoder extends MessageToMessageEncoder<GatewayMessage> {
+public class ForyEncoder extends MessageToByteEncoder<DecodedPacket> {
+
+    private static final Logger log = LoggerFactory.getLogger(ForyEncoder.class);
 
     @Override
-    protected void encode(ChannelHandlerContext ctx, GatewayMessage msg, List<Object> out) throws Exception {
-        log.debug("Encoding message: class={} flag={}", msg.getClass().getSimpleName(), msg.gatewayFlag());
-        ServiceType type = ServiceType.fromFlag(msg.gatewayFlag());
-        if (type == null) {
-            throw new IllegalArgumentException("Unknown gateway flag: " + msg.gatewayFlag());
+    protected void encode(ChannelHandlerContext ctx, DecodedPacket msg, ByteBuf out) {
+        try {
+            // 1. Write the 16-bit Wire ID directly from the Enum ordinal
+            out.writeShort(msg.type().ordinal());
+
+            // 2. Serialize the Java DTO to bytes using Fory
+            byte[] payloadBytes = ForySerializer.serialize(msg.payload());
+
+            // 3. Write the payload bytes to the buffer
+            out.writeBytes(payloadBytes);
+
+        } catch (Exception e) {
+            log.error("Failed to serialize and encode PacketType: {}", msg.type(), e);
         }
-        out.add(new GatewayFrame(type, "", ForySerializer.serialize(msg)));
     }
 }

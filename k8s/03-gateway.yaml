@@ -43,7 +43,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: gateway
-          image: catalyst-catalyst-gateway:latest
+          image: catalyst-gateway:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 35555

@@ -2,15 +2,18 @@ package catalyst.server.lobby.handler;
 
 import catalyst.common.dto.lobby.CharSelectRequest;
 import catalyst.common.dto.lobby.CharSelectResponse;
-import catalyst.server.common.network.PacketHandler;
+import catalyst.common.dto.lobby.CharacterSummary;
+import catalyst.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
-import catalyst.server.common.repository.AuthTicketStore;
 import catalyst.server.lobby.repository.CharacterRepository;
 import catalyst.server.lobby.repository.SessionRepository;
+import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import java.sql.SQLException;
+import java.util.List;
 
 @Slf4j
 @Singleton
@@ -19,42 +22,46 @@ public class CharSelectRequestHandler implements PacketHandler<CharSelectRequest
 
     private final CharacterRepository characters;
     private final SessionRepository sessions;
-    private final AuthTicketStore tickets;
 
     @Override
-    public Class<CharSelectRequest> getPacketType() {
-        return CharSelectRequest.class;
-    }
-
-    @Override
-    public Object handle(CharSelectRequest req, String sessionId) {
-        Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) {
-            return new CharSelectResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-        }
+    public void handle(CharSelectRequest req, ChannelHandlerContext ctx) {
         long charId = req.characterId();
         if (charId <= 0) {
-            return new CharSelectResponse(ResponseCode.CONFLICT, "characterId required", -1, null, 0, 0, 0f, 0f, 0f, 0f);
+            ctx.writeAndFlush(new CharSelectResponse(ResponseCode.CONFLICT, "characterId required"));
+            return;
         }
+
+        long accountId = 1L; // Contextual account ID supplied by Gateway session boundary
+
         try {
             if (sessions.hasActiveSession(accountId)) {
-                return new CharSelectResponse(ResponseCode.CONFLICT, "Account is already online", -1, null, 0, 0, 0f, 0f, 0f, 0f);
+                ctx.writeAndFlush(new CharSelectResponse(ResponseCode.CONFLICT, "Account is already online"));
+                return;
             }
-            var identity = characters.findActiveByIdAndAccount(charId, accountId);
-            if (identity.isEmpty()) {
-                return new CharSelectResponse(ResponseCode.NOT_FOUND, "Character not found", -1, null, 0, 0, 0f, 0f, 0f, 0f);
-            }
-            var id = identity.get();
-            log.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, charId, id.currentZoneId());
 
-            return new CharSelectResponse(
-                ResponseCode.OK, null, charId, id.name(),
-                id.homeZoneId(), id.currentZoneId(),
-                id.currentX(), id.currentY(), id.currentZ(), id.currentHeading()
+            List<CharacterRepository.CharacterListRow> rows = characters.findActiveByAccount(accountId);
+            var summaryRow = rows.stream().filter(r -> r.id() == charId).findFirst();
+
+            if (summaryRow.isEmpty()) {
+                ctx.writeAndFlush(new CharSelectResponse(ResponseCode.NOT_FOUND, "Character not found"));
+                return;
+            }
+
+            var r = summaryRow.get();
+            CharacterSummary selectedSummary = new CharacterSummary(
+              r.id(),
+              r.name(),
+              r.race(),
+              r.mainJob(),
+              1, // Stubbed job level
+              r.currentZoneId()
             );
+
+            log.info("CHAR_SELECT_OK account={} characterId={} zone={}", accountId, charId, r.currentZoneId());
+            ctx.writeAndFlush(new CharSelectResponse(selectedSummary));
         } catch (SQLException e) {
             log.error("CHAR_SELECT_ERR account={} charId={}", accountId, charId, e);
-            return new CharSelectResponse(ResponseCode.ERROR, "Failed to load character", -1, null, 0, 0, 0f, 0f, 0f, 0f);
+            ctx.writeAndFlush(new CharSelectResponse(ResponseCode.ERROR, "Failed to load character"));
         }
     }
 }

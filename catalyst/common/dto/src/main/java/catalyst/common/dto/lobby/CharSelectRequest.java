@@ -1,10 +1,8 @@
 package catalyst.common.dto.lobby;
 
-import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.lobby.LobbyGatewayMessage;
-
-public record CharSelectRequest(
-    String authToken,
-    long characterId
-) implements LobbyGatewayMessage {
-}
+/**
+ * Client request to select a character on the lobby menu.
+ *
+ * @param characterId Selected character ID.
+ */
+public record CharSelectRequest(long characterId) {}

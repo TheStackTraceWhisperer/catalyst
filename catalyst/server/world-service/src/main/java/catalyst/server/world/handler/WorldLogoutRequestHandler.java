@@ -2,7 +2,7 @@ package catalyst.server.world.handler;
 
 import catalyst.common.dto.world.LogoutRequest;
 import catalyst.common.dto.world.LogoutResponse;
-import catalyst.common.network.GatewayControlMessage;
+import catalyst.server.common.network.GatewayControlMessage;
 import catalyst.server.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
 import catalyst.server.world.repository.SessionRepository;

@@ -3,9 +3,12 @@ package catalyst.client.network;
 import catalyst.common.concurrency.TaskHandle;
 import catalyst.common.concurrency.TaskScheduler;
 import catalyst.common.concurrency.TaskStatus;
-import catalyst.common.network.ResponseCode;
 import catalyst.common.dto.world.PingRequest;
 import catalyst.common.dto.world.PingResponse;
+import catalyst.common.network.DecodedPacket;
+import catalyst.common.network.PacketType;
+import catalyst.common.network.ResponseCode;
+import io.micronaut.context.BeanProvider;
 import jakarta.inject.Singleton;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +21,8 @@ import java.time.Instant;
 @RequiredArgsConstructor
 public class KeepAliveService {
 
-    private final QuicGatewayService gateway;
+    // Wrap QuicGatewayService in BeanProvider for lazy initialization
+    private final BeanProvider<ClientTransportService> gatewayProvider;
     private final TaskScheduler taskScheduler;
 
     private TaskHandle<?> task;
@@ -34,8 +38,7 @@ public class KeepAliveService {
         this.sessionId = sessionId;
         this.status = "connected";
         long interval = Math.max(250L, intervalMs);
-        
-        // Schedule keep alive loop using TaskScheduler
+
         schedulePingLoop(interval);
         log.info("KeepAlive started session={} interval={}ms", sessionId, interval);
     }
@@ -45,7 +48,6 @@ public class KeepAliveService {
             sendPing();
             return null;
         }, (res) -> {
-            // After successful ping processing (success callback runs on main thread), schedule the next ping
             if (isActive()) {
                 taskScheduler.submit(() -> {
                     Thread.sleep(intervalMs);
@@ -54,9 +56,7 @@ public class KeepAliveService {
                     if (isActive()) {
                         schedulePingLoop(intervalMs);
                     }
-                }, (err) -> {
-                    log.warn("Error in keepalive delay: {}", err.getMessage());
-                });
+                }, (err) -> log.warn("Error in keepalive delay: {}", err.getMessage()));
             }
         }, (err) -> {
             log.warn("Error running ping: {}", err.getMessage());
@@ -74,9 +74,9 @@ public class KeepAliveService {
     }
 
     public void stop() {
-        if (task != null) { 
-            task.cancel(true); 
-            task = null; 
+        if (task != null) {
+            task.cancel(true);
+            task = null;
         }
         status = "idle";
         log.info("KeepAlive stopped");
@@ -85,7 +85,11 @@ public class KeepAliveService {
     public void sendPing() {
         lastPingSentTimeMs = System.currentTimeMillis();
         try {
-            gateway.sendAsync(new PingRequest());
+            PingRequest request = new PingRequest(lastPingSentTimeMs);
+            DecodedPacket packet = new DecodedPacket(PacketType.PING_REQUEST, request);
+
+            // Fetch gateway via provider when needed
+            gatewayProvider.get().sendAsync(packet);
         } catch (Exception e) {
             status = "failed";
             log.warn("PING_ERR {}", e.getMessage());
@@ -105,5 +109,7 @@ public class KeepAliveService {
         }
     }
 
-    public boolean isActive() { return task != null && task.getStatus() != TaskStatus.CANCELLED; }
+    public boolean isActive() {
+        return task != null && task.getStatus() != TaskStatus.CANCELLED;
+    }
 }

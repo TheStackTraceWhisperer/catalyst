@@ -1,8 +1,9 @@
 package catalyst.tests.e2e;
 
+import catalyst.client.network.ClientTransport;
 import catalyst.client.network.dispatch.ClientDispatcher;
 import catalyst.common.network.ResponseCode;
-import catalyst.client.network.QuicGatewayService;
+import catalyst.client.network.ClientTransportService;
 import catalyst.common.dto.login.*;
 import catalyst.common.dto.lobby.*;
 import catalyst.common.dto.world.*;
@@ -27,8 +28,8 @@ public final class E2EValidationHarness {
             @Override public String getKeyPath() { return ""; }
             @Override public String getCaPath() { return caPath; }
         };
-        catalyst.client.network.QuicGateway gateway = new catalyst.client.network.QuicGateway(dispatcher, devTls);
-        try (QuicGatewayService service = new QuicGatewayService(gateway)) {
+        ClientTransport gateway = new ClientTransport(dispatcher, devTls);
+        try (ClientTransportService service = new ClientTransportService(gateway)) {
             // Register gateway host and port once
             service.connect(host, port);
 

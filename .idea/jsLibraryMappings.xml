@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="JavaScriptLibraryMappings">
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/ffxi-xim-analysis/reference/xim-source/build/js/node_modules" />
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/ffxi-xim-analysis/reference/xim-source/build/js/packages/xim-test/node_modules" />
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/ffxi-xim-analysis/reference/xim-source/build/js/packages/xim/node_modules" />
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/xim-source/build/js/node_modules" />
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/xim-source/build/js/packages/xim-test/node_modules" />
+    <excludedPredefinedLibrary name="ffxi-java/ffxi-java-reference/xim-source/build/js/packages/xim/node_modules" />
+  </component>
+</project>

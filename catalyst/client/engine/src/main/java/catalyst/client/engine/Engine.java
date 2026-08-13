@@ -1,35 +1,50 @@
 package catalyst.client.engine;
 
-import catalyst.common.concurrency.TaskScheduler;
 import catalyst.client.engine.services.state.ApplicationStateService;
 import catalyst.client.engine.services.time.FrameTimeService;
 import catalyst.client.engine.services.window.WindowService;
+import catalyst.common.concurrency.TaskScheduler;
 import jakarta.inject.Singleton;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
-import catalyst.client.network.dispatch.ClientDispatcher;
-import catalyst.client.engine.services.state.ApplicationState;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 @Slf4j
 @Singleton
-@RequiredArgsConstructor
 public final class Engine implements Runnable {
 
     private enum EngineState { NEW, INITIALIZED, SHUTDOWN }
 
     private final ApplicationLoopPolicy loopPolicy;
     private final ApplicationStateService stateService;
-    private final List<IService> services;
+    private final List<IService> sortedServices;
     private final WindowService windowService;
     private final FrameTimeService frameTime;
     private final TaskScheduler taskScheduler;
-    private final ClientDispatcher clientDispatcher;
 
     private EngineState state = EngineState.NEW;
     private int frames = 0;
+
+    public Engine(
+      ApplicationLoopPolicy loopPolicy,
+      ApplicationStateService stateService,
+      List<IService> services,
+      WindowService windowService,
+      FrameTimeService frameTime,
+      TaskScheduler taskScheduler
+    ) {
+        this.loopPolicy = loopPolicy;
+        this.stateService = stateService;
+        this.windowService = windowService;
+        this.frameTime = frameTime;
+        this.taskScheduler = taskScheduler;
+
+        // Defensive copy to prevent UnsupportedOperationException if services is unmodifiable
+        this.sortedServices = new ArrayList<>(services);
+        this.sortedServices.sort(Comparator.comparingInt(IService::executionOrder));
+    }
 
     public void init() {
         if (state != EngineState.NEW) {
@@ -37,9 +52,8 @@ public final class Engine implements Runnable {
             return;
         }
         log.info("Initializing Catalyst Engine");
-        // Samuel - Slightly concerned; do we have any guarantee that `services` will be a mutable list? If not, this sort could throw an exception. We should probably defensively copy it first.
-        services.sort(Comparator.comparingInt(IService::executionOrder));
-        for (IService service : services) {
+
+        for (IService service : sortedServices) {
             log.debug("Starting service: {}", service.getClass().getSimpleName());
             service.start();
         }
@@ -52,27 +66,22 @@ public final class Engine implements Runnable {
             throw new IllegalStateException("Cannot tick uninitialized engine");
         }
         windowService.pollEvents();
-        taskScheduler.processForegroundTasks();
-        
-        Object packet;
-        while ((packet = clientDispatcher.pollNextPacket()) != null) {
-            ApplicationState active = stateService.peek();
-            if (active != null) {
-                active.onHandlePacket(packet);
-            }
-        }
 
-        for (IService service : services) service.update();
+        // Drains network callbacks and queued tasks safely on the render thread
+        taskScheduler.processForegroundTasks();
+
+        for (IService service : sortedServices) service.update();
         float dt = frameTime.getDeltaTimeSeconds();
-        for (IService service : services) service.update(dt);
-        for (IService service : services) service.postUpdate();
+        for (IService service : sortedServices) service.update(dt);
+        for (IService service : sortedServices) service.postUpdate();
+
         windowService.swapBuffers();
         frames++;
     }
 
     private void mainLoop() {
         while (loopPolicy.continueRunning(frames, windowService.getHandle())
-               && !stateService.isEmpty()) {
+          && !stateService.isEmpty()) {
             tick();
         }
     }
@@ -80,9 +89,11 @@ public final class Engine implements Runnable {
     public void shutdown() {
         if (state == EngineState.SHUTDOWN) return;
         log.info("Shutting down Catalyst Engine");
-        List<IService> reversed = services.stream()
-            .sorted(Comparator.comparingInt(IService::executionOrder).reversed())
-            .toList();
+
+        List<IService> reversed = sortedServices.stream()
+          .sorted(Comparator.comparingInt(IService::executionOrder).reversed())
+          .toList();
+
         for (IService service : reversed) {
             log.debug("Stopping service: {}", service.getClass().getSimpleName());
             service.stop();

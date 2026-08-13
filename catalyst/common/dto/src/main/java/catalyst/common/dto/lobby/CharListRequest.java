@@ -1,9 +1,7 @@
 package catalyst.common.dto.lobby;
 
-import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.lobby.LobbyGatewayMessage;
-
-public record CharListRequest(
-    String authToken
-) implements LobbyGatewayMessage {
-}
+/**
+ * Client request to fetch the list of characters belonging to the authenticated account.
+ * Identity context is supplied via Gateway's ClientSession.
+ */
+public record CharListRequest() {}

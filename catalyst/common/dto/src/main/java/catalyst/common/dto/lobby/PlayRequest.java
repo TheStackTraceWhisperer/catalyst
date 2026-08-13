@@ -1,10 +1,8 @@
 package catalyst.common.dto.lobby;
 
-import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.lobby.LobbyGatewayMessage;
-
-public record PlayRequest(
-    String authToken,
-    long characterId
-) implements LobbyGatewayMessage {
-}
+/**
+ * Client request to enter the world with the currently selected character.
+ *
+ * @param characterId Target character ID entering the world.
+ */
+public record PlayRequest(long characterId) {}

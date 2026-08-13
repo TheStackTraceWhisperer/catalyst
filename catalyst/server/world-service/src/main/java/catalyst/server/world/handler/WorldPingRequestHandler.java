@@ -23,20 +23,27 @@ public class WorldPingRequestHandler implements PacketHandler<PingRequest> {
     }
 
     @Override
+    public boolean isImmediate() {
+        return true;
+    }
+
+    @Override
     public Object handle(PingRequest req, String sessionId) {
         sessionId = normalize(sessionId);
         if (sessionId.isBlank()) {
             return new PingResponse(null, null, ResponseCode.CONFLICT, "Missing sessionId");
         }
-        try {
-            if (!sessions.ping(sessionId)) {
-                return new PingResponse(null, null, ResponseCode.NOT_FOUND, "Session not found");
+        
+        final String targetSessionId = sessionId;
+        Thread.startVirtualThread(() -> {
+            try {
+                sessions.ping(targetSessionId);
+            } catch (SQLException e) {
+                log.error("Async keepalive database update failed for session {}", targetSessionId, e);
             }
-            return new PingResponse("PONG", sessionId, ResponseCode.OK, null);
-        } catch (SQLException e) {
-            log.error("PING_ERR session={}", sessionId, e);
-            return new PingResponse(null, null, ResponseCode.ERROR, "Failed to update keepalive");
-        }
+        });
+
+        return new PingResponse("PONG", sessionId, ResponseCode.OK, null);
     }
 
     private String normalize(String v) { return v == null ? "" : v.trim(); }

@@ -1,5 +1,7 @@
 package catalyst.client.application.ui;
 
+import catalyst.client.application.ClientState;
+import catalyst.common.dto.lobby.CharacterSummary;
 import imgui.ImGui;
 import imgui.flag.ImGuiCond;
 import imgui.type.ImBoolean;
@@ -8,7 +10,6 @@ import imgui.type.ImString;
 import io.micronaut.context.annotation.Prototype;
 import lombok.Getter;
 
-import java.util.ArrayList;
 import java.util.List;
 
 @Prototype
@@ -34,28 +35,19 @@ public class CharacterPanel {
     @Getter private boolean createSubmitted;
     @Getter private boolean refreshRequested;
     @Getter private boolean signOutRequested;
-    @Getter private String  selectCharacterId;
-    @Getter private String  deleteCharacterId;
+    @Getter private Long    selectCharacterId;
+    @Getter private Long    deleteCharacterId;
     @Getter private boolean playRequested;
 
-    // Data
-    private List<CharRow> characters = new ArrayList<>();
-    private String selectedId = null;
-    private String selectedName = null;
-    private String statusMessage = "";
-
-    public record CharRow(String id, String name, String raceName, int size, int face, String jobName, String nationName) {}
-
-    public void setCharacters(List<CharRow> rows) { this.characters = rows; }
-    public void setSelectedCharacter(String id, String name) { this.selectedId = id; this.selectedName = name; }
-    public void setStatus(String msg) { this.statusMessage = msg; }
-
-    public void render() {
+    public void render(ClientState clientState) {
         ImGui.setNextWindowPos(20, 20, ImGuiCond.Once);
         ImGui.setNextWindowSize(760, 560, ImGuiCond.Once);
         ImGui.begin("Character Select");
 
-        ImGui.text(statusMessage);
+        if (clientState.getLastErrorMessage() != null) {
+            ImGui.textColored(1.0f, 0.2f, 0.2f, 1.0f, "Error: " + clientState.getLastErrorMessage());
+        }
+
         if (ImGui.button("Refresh"))  refreshRequested = true;
         ImGui.sameLine();
         if (ImGui.button("Sign Out")) signOutRequested = true;
@@ -69,24 +61,30 @@ public class CharacterPanel {
 
         ImGui.separator();
         ImGui.text("Characters:");
+
+        List<CharacterSummary> characters = clientState.getCharacterList();
         if (characters.isEmpty()) {
-            ImGui.textDisabled("No characters.");
+            ImGui.textDisabled("No characters found.");
         } else {
-            for (CharRow rc : characters) {
-                ImGui.text(rc.name() + "  " + rc.raceName() + "  size=" + rc.size() + "  face=" + rc.face()
-                    + "  " + rc.jobName() + "  " + rc.nationName());
+            for (CharacterSummary c : characters) {
+                String raceLabel = c.raceId() >= 1 && c.raceId() <= RACE_LABELS.length ? RACE_LABELS[c.raceId() - 1] : "Unknown";
+                String jobLabel  = c.mainJobId() >= 1 && c.mainJobId() <= JOB_LABELS.length ? JOB_LABELS[c.mainJobId() - 1] : "Job " + c.mainJobId();
+
+                ImGui.text(String.format("%s  %s  Lvl %d  %s  Zone: %d", c.name(), raceLabel, c.mainJobLevel(), jobLabel, c.zoneId()));
                 ImGui.sameLine();
-                if (ImGui.smallButton("Select##" + rc.id())) selectCharacterId = rc.id();
+
+                if (ImGui.smallButton("Select##" + c.characterId())) selectCharacterId = c.characterId();
                 ImGui.sameLine();
-                if (ImGui.smallButton("Delete##" + rc.id())) deleteCharacterId = rc.id();
+                if (ImGui.smallButton("Delete##" + c.characterId())) deleteCharacterId = c.characterId();
             }
         }
 
+        Long selectedId = clientState.getSelectedCharacterId();
         if (selectedId != null) {
             ImGui.separator();
             if (ImGui.button("Play")) playRequested = true;
             ImGui.sameLine();
-            ImGui.text("Ready: " + selectedName);
+            ImGui.text("Ready (ID=" + selectedId + ")");
         }
         ImGui.end();
     }
@@ -113,16 +111,16 @@ public class CharacterPanel {
     }
 
     // Create form accessors
-    public String getNewName()  { return newName.get(); }
-    public int    getRaceId()   { return raceIdx.get() + 1; }
-    public int    getSizeId()   { return sizeIdx.get(); }
-    public int    getFaceId()   { return Math.clamp(faceNum.get(), 1, 8) - 1 + (faceB.get() ? 8 : 0); }
-    public int    getJobId()    { return jobIdx.get() + 1; }
-    public int    getNationId() { return nationIdx.get(); }
+    public String getNewName()   { return newName.get(); }
+    public int    getRaceId()    { return raceIdx.get() + 1; }
+    public int    getSizeId()    { return sizeIdx.get(); }
+    public int    getFaceId()    { return Math.clamp(faceNum.get(), 1, 8) - 1 + (faceB.get() ? 8 : 0); }
+    public int    getJobId()     { return jobIdx.get() + 1; }
+    public String getNationName(){ return NATION_LABELS[nationIdx.get()]; }
 
     public void clearIntents() {
         createSubmitted = false; refreshRequested = false; signOutRequested = false;
         selectCharacterId = null; deleteCharacterId = null; playRequested = false;
     }
-    public void hideCreateForm()  { showCreateForm = false; newName.set(""); }
+    public void hideCreateForm() { showCreateForm = false; newName.set(""); }
 }

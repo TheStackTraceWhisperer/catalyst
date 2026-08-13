@@ -45,7 +45,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: login-service
-          image: catalyst-catalyst-login-service:latest
+          image: catalyst-login-service:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 35556
@@ -101,7 +101,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: lobby-service
-          image: catalyst-catalyst-lobby-service:latest
+          image: catalyst-lobby-service:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 35556
@@ -245,7 +245,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: world-service
-          image: catalyst-catalyst-world-service:latest
+          image: catalyst-world-service:latest
           imagePullPolicy: Never
           ports:
             - containerPort: 35556

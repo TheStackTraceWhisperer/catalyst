@@ -18,7 +18,6 @@
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-common-network</artifactId>
-      <version>${project.version}</version>
     </dependency>
   </dependencies>
 </project>

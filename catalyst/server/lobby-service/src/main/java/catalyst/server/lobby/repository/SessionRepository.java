@@ -2,6 +2,7 @@ package catalyst.server.lobby.repository;
 
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
+
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -17,7 +18,7 @@ public class SessionRepository {
     public boolean hasActiveSession(long accountId) throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement s = c.prepareStatement(
-                 "SELECT 1 FROM accounts_sessions WHERE account_id = ? LIMIT 1")) {
+               "SELECT 1 FROM accounts_sessions WHERE account_id = ? LIMIT 1")) {
             s.setLong(1, accountId);
             try (ResultSet rs = s.executeQuery()) { return rs.next(); }
         }
@@ -26,7 +27,7 @@ public class SessionRepository {
     public boolean characterHasActiveSession(long characterId) throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement s = c.prepareStatement(
-                 "SELECT 1 FROM accounts_sessions WHERE character_id = ? LIMIT 1")) {
+               "SELECT 1 FROM accounts_sessions WHERE character_id = ? LIMIT 1")) {
             s.setLong(1, characterId);
             try (ResultSet rs = s.executeQuery()) { return rs.next(); }
         }
@@ -51,7 +52,7 @@ public class SessionRepository {
     public int getZonePopulation(int zoneId) throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement s = c.prepareStatement(
-                 "SELECT COUNT(*) FROM accounts_sessions WHERE zone_id = ?")) {
+               "SELECT COUNT(*) FROM accounts_sessions WHERE zone_id = ?")) {
             s.setInt(1, zoneId);
             try (ResultSet rs = s.executeQuery()) {
                 if (rs.next()) return rs.getInt(1);

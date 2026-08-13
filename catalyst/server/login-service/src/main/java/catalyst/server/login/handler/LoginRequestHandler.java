@@ -1,100 +1,68 @@
 package catalyst.server.login.handler;
 
-import catalyst.common.network.ResponseCode;
-import catalyst.server.common.network.PacketHandler;
 import catalyst.common.dto.login.LoginRequest;
 import catalyst.common.dto.login.LoginResponse;
-import catalyst.server.login.properties.ServerProperties;
-import catalyst.server.login.repository.AccountRepository;
-import catalyst.server.common.repository.AuthTicketStore;
-import de.mkammerer.argon2.Argon2;
-import de.mkammerer.argon2.Argon2Factory;
+import catalyst.server.common.network.GatewayControlMessage;
+import catalyst.server.common.network.GatewayFrame;
+import catalyst.common.network.PacketHandler;
+import catalyst.common.network.ResponseCode;
+import catalyst.common.network.ServiceType;
+import catalyst.common.network.ForySerializer;
+import catalyst.server.login.service.AccountAuthenticationService;
+import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import java.sql.SQLException;
-
-import catalyst.common.network.GatewayControlMessage;
 
 @Slf4j
 @Singleton
 @RequiredArgsConstructor
 public class LoginRequestHandler implements PacketHandler<LoginRequest> {
 
-    private static final Argon2 ARGON2 = Argon2Factory.create();
-
-    private final AccountRepository accounts;
-    private final AuthTicketStore tickets;
-    private final ServerProperties props;
+    private final AccountAuthenticationService authService;
 
     @Override
-    public Class<LoginRequest> getPacketType() {
-        return LoginRequest.class;
+    public void handle(LoginRequest payload, ChannelHandlerContext ctx) {
+        log.info("Processing login request for user: {}", payload.username());
+
+        authService.authenticateAsync(payload.username(), payload.password())
+          .thenAccept(authResult -> {
+              if (authResult.isSuccess()) {
+                  long accountId = authResult.accountId();
+                  log.info("Authentication SUCCESS for user: {} (accountId={})", payload.username(), accountId);
+
+                  // 1. Send GatewayControlMessage("auth_success") so Gateway advances SecurityState to AUTHENTICATED
+                  GatewayControlMessage controlSignal = new GatewayControlMessage("auth_success", null, String.valueOf(accountId));
+                  writeControlFrame(ctx, controlSignal);
+
+                  // 2. Write LoginResponse DTO back to client
+                  LoginResponse response = new LoginResponse(ResponseCode.OK, accountId, null);
+                  ctx.writeAndFlush(response).addListener(f -> {
+                      if (!f.isSuccess()) {
+                          log.warn("Failed to flush LoginResponse", f.cause());
+                      }
+                  });
+              } else {
+                  log.warn("Authentication FAILED for user: {}", payload.username());
+                  LoginResponse response = new LoginResponse(ResponseCode.UNAUTHORIZED, null, "Invalid username or password");
+                  ctx.writeAndFlush(response);
+              }
+          })
+          .exceptionally(err -> {
+              log.error("Internal error during authentication for user: {}", payload.username(), err);
+              LoginResponse response = new LoginResponse(ResponseCode.ERROR, null, "Internal server error");
+              ctx.writeAndFlush(response);
+              return null;
+          });
     }
 
-    @Override
-    public Object handle(LoginRequest req, String sessionId) {
-        String username = normalize(req.username());
-        String password = normalize(req.password());
-        if (username.isBlank() || password.isBlank()) {
-            return error(ResponseCode.UNAUTHORIZED, "Username and password are required");
-        }
+    private void writeControlFrame(ChannelHandlerContext ctx, GatewayControlMessage controlMsg) {
         try {
-            var row = accounts.findByUsername(username);
-            if (row.isEmpty()) {
-                log.info("LOGIN_ERR user={} reason=not_found", username);
-                return error(ResponseCode.UNAUTHORIZED, "Invalid username or password");
-            }
-            var account = row.get();
-            if (!"active".equalsIgnoreCase(account.status())) {
-                log.info("LOGIN_ERR user={} account={} reason=not_active", username, account.id());
-                return error(ResponseCode.UNAUTHORIZED, "Account is not active");
-            }
-            if (!ARGON2.verify(account.passwordHash(), password.toCharArray())) {
-                log.info("LOGIN_ERR user={} account={} reason=bad_password", username, account.id());
-                return error(ResponseCode.UNAUTHORIZED, "Invalid username or password");
-            }
-            String token = tickets.issue(account.id());
-            log.info("LOGIN_OK user={} account={}", username, account.id());
-
-            return new Object[] {
-                new GatewayControlMessage("auth_success", token, null),
-                new LoginResponse(ResponseCode.OK, "Authenticated", token, account.id())
-            };
-        } catch (SQLException e) {
-            log.error("LOGIN_ERR user={} reason=db_error", username, e);
-            return error(ResponseCode.ERROR, "Authentication backend unavailable");
+            byte[] controlBytes = ForySerializer.serialize(controlMsg);
+            GatewayFrame controlFrame = new GatewayFrame(ServiceType.CONTROL, "", controlBytes);
+            ctx.write(controlFrame); // Write without flush so it bundles with the upcoming response frame
+        } catch (Exception e) {
+            log.error("Failed to serialize GatewayControlMessage", e);
         }
     }
-
-    public void bootstrapDevAccount() {
-        try {
-            if (accounts.existsByUsername("dev")) {
-                log.info("Bootstrap account 'dev' already present");
-                return;
-            }
-            String hash = ARGON2.hash(props.getArgon2Iterations(), props.getArgon2MemoryKib(),
-                props.getArgon2Parallelism(), "dev".toCharArray());
-            try {
-                accounts.insert("dev", hash, "active");
-                log.info("Bootstrapped dev account");
-            } catch (SQLException e) {
-                if ("23505".equals(e.getSQLState())) {
-                    log.info("Bootstrap account 'dev' already present (concurrent insert)");
-                } else {
-                    throw e;
-                }
-            }
-        } catch (SQLException e) {
-            log.error("Bootstrap dev account failed", e);
-        }
-    }
-
-    private String normalize(String v) { return v == null ? "" : v.trim(); }
-
-    private LoginResponse error(ResponseCode code, String message) {
-        return new LoginResponse(code, message, null, -1);
-    }
-
-    public void cleanupTickets() { tickets.removeExpired(); }
 }

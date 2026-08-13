@@ -1,6 +1,6 @@
 package catalyst.server.lobby.repository;
 
-import catalyst.common.dto.world.CharacterIdentity;
+import catalyst.server.common.model.CharacterSpawnState;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,7 +22,20 @@ public class CharacterRepository {
     private final DataSource dataSource;
 
     public record CharacterListRow(long id, String name, int race, String raceName, int size, int face,
-                                    int mainJob, String jobName, int nation, int currentZoneId) {}
+                                   int mainJob, String jobName, int nation, int currentZoneId) {}
+
+    public Optional<Integer> findCurrentZoneId(long characterId) throws SQLException {
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement s = c.prepareStatement("""
+                SELECT current_zone_id FROM characters WHERE id = ? AND deleted_at IS NULL
+                """)) {
+            s.setLong(1, characterId);
+            try (ResultSet rs = s.executeQuery()) {
+                if (!rs.next()) return Optional.empty();
+                return Optional.of(rs.getInt("current_zone_id"));
+            }
+        }
+    }
 
     public List<CharacterListRow> findActiveByAccount(long accountId) throws SQLException {
         try (Connection c = dataSource.getConnection();
@@ -37,15 +50,15 @@ public class CharacterRepository {
                     int raceId = rs.getInt("race");
                     int jobId  = rs.getInt("main_job");
                     rows.add(new CharacterListRow(rs.getLong("id"), rs.getString("name"),
-                        raceId, raceNameFor(raceId), rs.getInt("size"), rs.getInt("face"),
-                        jobId, jobNameFor(jobId), rs.getInt("nation"), rs.getInt("current_zone_id")));
+                      raceId, raceNameFor(raceId), rs.getInt("size"), rs.getInt("face"),
+                      jobId, jobNameFor(jobId), rs.getInt("nation"), rs.getInt("current_zone_id")));
                 }
             }
             return rows;
         }
     }
 
-    public Optional<CharacterIdentity> findActiveByIdAndAccount(long characterId, long accountId) throws SQLException {
+    public Optional<CharacterSpawnState> findActiveByIdAndAccount(long characterId, long accountId) throws SQLException {
         try (Connection c = dataSource.getConnection();
              PreparedStatement s = c.prepareStatement("""
                 SELECT id, name, home_zone_id, home_x, home_y, home_z, home_rot,
@@ -56,12 +69,12 @@ public class CharacterRepository {
             s.setLong(2, accountId);
             try (ResultSet rs = s.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
-                return Optional.of(new CharacterIdentity(
-                    Long.toString(rs.getLong("id")), rs.getString("name"),
-                    rs.getInt("home_zone_id"), rs.getFloat("home_x"), rs.getFloat("home_y"),
-                    rs.getFloat("home_z"), rs.getFloat("home_rot"),
-                    rs.getInt("current_zone_id"), rs.getFloat("current_x"), rs.getFloat("current_y"),
-                    rs.getFloat("current_z"), rs.getFloat("current_rot")));
+                return Optional.of(new CharacterSpawnState(
+                  rs.getLong("id"), rs.getString("name"),
+                  rs.getInt("home_zone_id"), rs.getFloat("home_x"), rs.getFloat("home_y"),
+                  rs.getFloat("home_z"), rs.getFloat("home_rot"),
+                  rs.getInt("current_zone_id"), rs.getFloat("current_x"), rs.getFloat("current_y"),
+                  rs.getFloat("current_z"), rs.getFloat("current_rot")));
             }
         }
     }
@@ -104,7 +117,7 @@ public class CharacterRepository {
 
     private void insertJobs(Connection c, long characterId, int mainJob) throws SQLException {
         try (PreparedStatement s = c.prepareStatement(
-            "INSERT INTO character_jobs (character_id,war,mnk,whm,blm,rdm,thf) VALUES (?,?,?,?,?,?,?)")) {
+          "INSERT INTO character_jobs (character_id,war,mnk,whm,blm,rdm,thf) VALUES (?,?,?,?,?,?,?)")) {
             s.setLong(1, characterId);
             for (int j = 1; j <= 6; j++) s.setInt(j + 1, j == mainJob ? 1 : 0);
             s.executeUpdate();

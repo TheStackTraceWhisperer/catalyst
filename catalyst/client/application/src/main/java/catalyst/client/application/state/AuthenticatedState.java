@@ -1,22 +1,19 @@
 package catalyst.client.application.state;
 
+import catalyst.client.application.ClientState;
 import catalyst.client.application.ui.CharacterPanel;
-import catalyst.client.application.ui.CharacterPanel.CharRow;
 import catalyst.client.application.ui.DebugLogPanel;
-import catalyst.client.engine.services.state.ApplicationStateService;
 import catalyst.client.engine.services.state.ApplicationState;
-import catalyst.common.network.ResponseCode;
-import catalyst.client.network.QuicGatewayService;
-import catalyst.common.dto.login.*;
+import catalyst.client.engine.services.state.ApplicationStateService;
+import catalyst.client.network.ClientTransportService;
 import catalyst.common.dto.lobby.*;
-import catalyst.common.dto.world.*;
+import catalyst.common.network.DecodedPacket;
+import catalyst.common.network.PacketType;
+import catalyst.common.network.ResponseCode;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
-import jakarta.inject.Named;
 import lombok.RequiredArgsConstructor;
 import org.lwjgl.opengl.GL11;
-
-import java.util.List;
 
 @Prototype
 @RequiredArgsConstructor
@@ -24,20 +21,20 @@ public class AuthenticatedState implements ApplicationState {
 
     private final CharacterPanel panel;
     private final DebugLogPanel debugLog;
-    private final QuicGatewayService gateway;
+    private final ClientTransportService gateway;
     private final ApplicationStateService stateService;
+    private final ClientState clientState;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
-    private String authToken, accountId;
+    private long accountId;
 
-    public void init(String authToken, String accountId) {
-        this.authToken = authToken; this.accountId = accountId;
+    public void init(long accountId) {
+        this.accountId = accountId;
     }
 
     @Override
     public void onEnter() {
-        panel.setStatus("Authenticated — select or create a character");
         refreshCharacters();
     }
 
@@ -45,8 +42,10 @@ public class AuthenticatedState implements ApplicationState {
     public void onUpdate(float dt) {
         GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
-        panel.render();
+
+        panel.render(clientState);
         debugLog.render();
+
         processIntents();
         panel.clearIntents();
     }
@@ -58,6 +57,7 @@ public class AuthenticatedState implements ApplicationState {
         if (panel.isRefreshRequested()) refreshCharacters();
         if (panel.isSignOutRequested()) {
             debugLog.log("Signed out");
+            clientState.reset();
             stateService.changeState(unauthProvider::get);
         }
         if (panel.getSelectCharacterId() != null) doSelect(panel.getSelectCharacterId());
@@ -67,67 +67,82 @@ public class AuthenticatedState implements ApplicationState {
 
     private void refreshCharacters() {
         try {
-            CharListResponse resp = gateway.request(new CharListRequest(authToken), CharListResponse.class);
+            DecodedPacket packet = new DecodedPacket(PacketType.CHAR_LIST_REQUEST, new CharListRequest());
+            CharListResponse resp = gateway.request(packet, CharListResponse.class);
+
             if (resp.code() != ResponseCode.OK) {
-                throw new Exception("CHAR_LIST_ERR " + resp.code());
+                throw new Exception("CHAR_LIST_ERR " + resp.code() + " " + resp.errorMessage());
             }
-            List<CharRow> rows = resp.characters().stream()
-                .map(c -> {
-                    String nationStr = switch (c.nation()) {
-                        case 0 -> "Sandy";
-                        case 1 -> "Bastok";
-                        default -> "Windurst";
-                    };
-                    return new CharRow(c.id(), c.name(), c.raceName(), c.size(), c.face(), c.jobName(), nationStr);
-                })
-                .toList();
-            panel.setCharacters(rows);
-            panel.setStatus(rows.size() + " character(s)");
-            debugLog.log("CHAR_LIST_OK count=" + rows.size());
+
+            clientState.onCharacterListReceived(resp.code(), resp.characters(), resp.errorMessage());
+            debugLog.log("CHAR_LIST_OK count=" + resp.characters().size());
         } catch (Exception e) {
             debugLog.log("CHAR_LIST_ERR " + e.getMessage());
         }
     }
 
-    private void doSelect(String charId) {
+    private void doSelect(long characterId) {
         try {
-            long characterId = Long.parseLong(charId);
-            CharSelectResponse resp = gateway.request(new CharSelectRequest(authToken, characterId), CharSelectResponse.class);
-            if (resp.code() != ResponseCode.OK) { debugLog.log("CHAR_SELECT_ERR " + resp.code()); return; }
-            String charName = resp.characterName();
-            panel.setSelectedCharacter(charId, charName);
+            DecodedPacket packet = new DecodedPacket(PacketType.CHAR_SELECT_REQUEST, new CharSelectRequest(characterId));
+
+            CharSelectResponse resp = gateway.request(packet, CharSelectResponse.class);
+            if (resp.code() != ResponseCode.OK) {
+                debugLog.log("CHAR_SELECT_ERR " + resp.code() + " " + resp.errorMessage());
+                return;
+            }
+
+            CharacterSummary selectedChar = resp.selectedCharacter();
+            clientState.onCharacterSelected(resp.code(), selectedChar, resp.errorMessage());
+
             CharacterSelectedState next = selectedProvider.get();
-            next.init(authToken, accountId, charId, charName, resp.currentZoneId());
+            next.init(accountId, selectedChar.characterId(), selectedChar.name(), selectedChar.zoneId());
             stateService.changeState(() -> next);
-        } catch (Exception e) { debugLog.log("CHAR_SELECT_ERR " + e.getMessage()); }
+        } catch (Exception e) {
+            debugLog.log("CHAR_SELECT_ERR " + e.getMessage());
+        }
     }
 
-    private void doDelete(String charId) {
+    private void doDelete(long characterId) {
         try {
-            long characterId = Long.parseLong(charId);
-            CharDeleteResponse resp = gateway.request(new CharDeleteRequest(authToken, characterId), CharDeleteResponse.class);
-            if (resp.code() == ResponseCode.OK) { 
-                debugLog.log("CHAR_DELETE_OK id=" + charId); 
-                refreshCharacters(); 
+            DecodedPacket packet = new DecodedPacket(PacketType.CHAR_DELETE_REQUEST, new CharDeleteRequest(characterId));
+
+            CharDeleteResponse resp = gateway.request(packet, CharDeleteResponse.class);
+            if (resp.code() == ResponseCode.OK) {
+                debugLog.log("CHAR_DELETE_OK id=" + characterId);
+                clientState.onCharacterDeleted(resp.code(), characterId, null);
+                refreshCharacters();
             } else {
-                debugLog.log("CHAR_DELETE_ERR " + resp.code());
+                debugLog.log("CHAR_DELETE_ERR " + resp.code() + " " + resp.errorMessage());
             }
-        } catch (Exception e) { debugLog.log("CHAR_DELETE_ERR " + e.getMessage()); }
+        } catch (Exception e) {
+            debugLog.log("CHAR_DELETE_ERR " + e.getMessage());
+        }
     }
 
     private void doCreate() {
         try {
-            CharCreateResponse resp = gateway.request(
-                new CharCreateRequest(authToken, panel.getNewName(), panel.getRaceId(), panel.getSizeId(),
-                    panel.getFaceId(), panel.getJobId(), Integer.toString(panel.getNationId())),
-                CharCreateResponse.class);
+            CharCreateRequest reqPayload = new CharCreateRequest(
+              panel.getNewName(),
+              panel.getRaceId(),
+              panel.getSizeId(),
+              panel.getFaceId(),
+              panel.getJobId(),
+              panel.getNationName()
+            );
+
+            DecodedPacket packet = new DecodedPacket(PacketType.CHAR_CREATE_REQUEST, reqPayload);
+            CharCreateResponse resp = gateway.request(packet, CharCreateResponse.class);
+
             if (resp.code() == ResponseCode.OK) {
-                debugLog.log("CHAR_CREATE_OK id=" + resp.characterId() + " name=" + resp.name());
+                debugLog.log("CHAR_CREATE_OK id=" + resp.characterId());
                 panel.hideCreateForm();
+                clientState.onCharacterCreated(resp.code(), resp.characterId(), null);
                 refreshCharacters();
             } else {
-                debugLog.log("CHAR_CREATE_ERR " + resp.code() + " " + resp.message());
+                debugLog.log("CHAR_CREATE_ERR " + resp.code() + " " + resp.errorMessage());
             }
-        } catch (Exception e) { debugLog.log("CHAR_CREATE_ERR " + e.getMessage()); }
+        } catch (Exception e) {
+            debugLog.log("CHAR_CREATE_ERR " + e.getMessage());
+        }
     }
 }

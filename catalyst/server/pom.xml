@@ -19,5 +19,6 @@
     <module>login-service</module>
     <module>lobby-service</module>
     <module>world-service</module>
+    <module>gateway</module>
   </modules>
 </project>

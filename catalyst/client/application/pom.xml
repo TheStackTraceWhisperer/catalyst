@@ -18,12 +18,10 @@
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-client-engine</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-client-network</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <!-- Micronaut -->
     <dependency>
@@ -53,29 +51,14 @@
     <plugins>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-jar-plugin</artifactId>
-        <configuration>
-          <archive>
-            <manifest>
-              <mainClass>catalyst.client.application.ClientApplication</mainClass>
-              <addClasspath>true</addClasspath>
-              <classpathPrefix>lib/</classpathPrefix>
-            </manifest>
-          </archive>
-        </configuration>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-dependency-plugin</artifactId>
         <executions>
           <execution>
             <id>copy-runtime-deps</id>
             <phase>package</phase>
-            <goals><goal>copy-dependencies</goal></goals>
+            <goals>
+              <goal>copy-dependencies</goal>
+            </goals>
             <configuration>
               <includeScope>runtime</includeScope>
               <outputDirectory>${project.build.directory}/lib</outputDirectory>
@@ -85,4 +68,5 @@
       </plugin>
     </plugins>
   </build>
+
 </project>

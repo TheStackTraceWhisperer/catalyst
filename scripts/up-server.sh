@@ -25,16 +25,16 @@ fi
 echo "[server] Building postgres image..."
 docker build -t catalyst-postgres:17 docker/postgres
 
-echo "[server] Compiling and containerizing microservices with Jib..."
-mvn -DskipTests clean package jib:dockerBuild
+echo "[server] Compiling and containerizing microservices via Micronaut's built-in packaging..."
+mvn -f catalyst/pom.xml -DskipTests clean package -Dpackaging=docker
 
 # 4. Import images into k3d
 echo "[server] Importing images into k3d..."
 k3d image import catalyst-postgres:17 \
-  catalyst-catalyst-login-service:latest \
-  catalyst-catalyst-lobby-service:latest \
-  catalyst-catalyst-world-service:latest \
-  catalyst-catalyst-gateway:latest \
+  catalyst-login-service:latest \
+  catalyst-lobby-service:latest \
+  catalyst-world-service:latest \
+  catalyst-gateway:latest \
   -c "${CLUSTER_NAME}"
 
 # 5. Apply all Kubernetes manifests

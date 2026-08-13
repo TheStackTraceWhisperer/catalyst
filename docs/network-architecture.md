@@ -359,6 +359,6 @@ H --> TL : writes response via ctx
 | `server-common` | Shared `PacketHandler<T>` interface, `StatelessMessageDispatcher`, `ZoneMessageDispatcher` base contracts | — | — |
 | `common-network` | `GatewayFrame`, `ForySerializer`, `GatewayFrameEncoder/Decoder`, `GatewayControlMessage` | — | — |
 | `common-dto` | All shared request/response DTO records implementing `GatewayMessage` | — | — |
-| `client-network` | `QuicGateway`, `QuicGatewayService`, `KeepAliveService`, `ClientDispatcher` | QUIC / TLS 1.3 | — |
+| `client-network` | `ClientTransport`, `ClientTransportService`, `KeepAliveService`, `ClientDispatcher` | QUIC / TLS 1.3 | — |
 | `client-application` | State machine (`UnauthenticatedState`, `AuthenticatedState`, `CharacterSelectedState`, `InGameState`) | — | — |
 | `client-engine` | GLFW window lifecycle, OpenGL context, render loop, `TaskSchedulerService` | — | — |

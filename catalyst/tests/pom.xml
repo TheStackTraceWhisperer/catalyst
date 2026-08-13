@@ -18,7 +18,6 @@
     <dependency>
       <groupId>catalyst</groupId>
       <artifactId>catalyst-client-network</artifactId>
-      <version>${project.version}</version>
     </dependency>
     <!-- Logging -->
     <dependency>
@@ -33,62 +32,19 @@
     <dependency>
       <groupId>org.awaitility</groupId>
       <artifactId>awaitility</artifactId>
-      <version>4.2.0</version>
     </dependency>
   </dependencies>
 
   <build>
     <plugins>
       <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-compiler-plugin</artifactId>
-      </plugin>
-      <plugin>
-        <groupId>org.apache.maven.plugins</groupId>
-        <artifactId>maven-shade-plugin</artifactId>
-        <version>3.5.1</version>
-        <executions>
-          <execution>
-            <phase>package</phase>
-            <goals>
-              <goal>shade</goal>
-            </goals>
-            <configuration>
-              <dependencyReducedPomLocation>${project.build.directory}/dependency-reduced-pom.xml</dependencyReducedPomLocation>
-              <filters>
-                <filter>
-                  <artifact>*:*</artifact>
-                  <excludes>
-                    <exclude>META-INF/*.SF</exclude>
-                    <exclude>META-INF/*.DSA</exclude>
-                    <exclude>META-INF/*.RSA</exclude>
-                  </excludes>
-                </filter>
-              </filters>
-              <transformers>
-                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-                  <mainClass>catalyst.tests.e2e.E2EValidationHarness</mainClass>
-                </transformer>
-              </transformers>
-            </configuration>
-          </execution>
-        </executions>
-      </plugin>
-      <plugin>
-        <groupId>com.google.cloud.tools</groupId>
-        <artifactId>jib-maven-plugin</artifactId>
+        <groupId>io.micronaut.maven</groupId>
+        <artifactId>micronaut-maven-plugin</artifactId>
         <configuration>
-          <skip>false</skip>
-          <to>
-            <image>catalyst-tests:latest</image>
-          </to>
-          <container>
-            <creationTime>USE_CURRENT_TIMESTAMP</creationTime>
-            <mainClass>catalyst.tests.e2e.E2EValidationHarness</mainClass>
-            <jvmFlags>
-              <jvmFlag>--enable-native-access=ALL-UNNAMED</jvmFlag>
-            </jvmFlags>
-          </container>
+          <mainClass>catalyst.tests.e2e.E2EValidationHarness</mainClass>
+          <jvmArguments>
+            <jvmArgument>--enable-native-access=ALL-UNNAMED</jvmArgument>
+          </jvmArguments>
         </configuration>
       </plugin>
     </plugins>

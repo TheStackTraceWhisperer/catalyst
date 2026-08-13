@@ -12,6 +12,14 @@ public interface PacketHandler<T> {
     Class<T> getPacketType();
 
     /**
+     * Returns whether this packet should be handled immediately on the network thread,
+     * or queued to the game/zone tick loop.
+     */
+    default boolean isImmediate() {
+        return false;
+    }
+
+    /**
      * Processes the incoming request packet and returns a response.
      * 
      * @param packet the request packet DTO

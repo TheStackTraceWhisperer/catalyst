@@ -1,38 +1,57 @@
 package catalyst.common.network;
 
+import io.netty.buffer.ByteBuf;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.handler.codec.MessageToMessageDecoder;
-import io.netty.util.AttributeKey;
-import lombok.extern.slf4j.Slf4j;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import java.util.List;
 
 /**
- * Netty decoder that deserializes the payload of a {@link GatewayFrame} using Apache Fory.
+ * High-performance decoder that translates raw bytes into a routed Envelope.
+ * Expects the ByteBuf to be a complete, unfragmented frame.
  */
-@Slf4j
-public final class ForyDecoder extends MessageToMessageDecoder<GatewayFrame> {
+public class ForyDecoder extends MessageToMessageDecoder<ByteBuf> {
 
-    public static final AttributeKey<String> SESSION_ID_KEY = AttributeKey.valueOf("gateway.sessionId");
+    private static final Logger log = LoggerFactory.getLogger(ForyDecoder.class);
 
     @Override
-    protected void decode(ChannelHandlerContext ctx, GatewayFrame msg, List<Object> out) throws Exception {
-        // Store sessionId on channel context so downstream handlers can access it
-        if (msg.sessionId() != null && !msg.sessionId().isEmpty()) {
-            ctx.channel().attr(SESSION_ID_KEY).set(msg.sessionId());
-        }
-
-        byte[] payloadBytes = msg.payload();
-        if (payloadBytes == null || payloadBytes.length == 0) {
-            log.warn("Received GatewayFrame with empty payload");
+    protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) {
+        // A valid packet must have at least the 2-byte Wire ID
+        if (in.readableBytes() < 2) {
+            log.error("Received malformed packet: insufficient bytes for Wire ID.");
+            in.clear(); // Drop the bad data
             return;
         }
 
-        // Deserialize the payload using Apache Fory
-        Object domainObject = ForySerializer.deserialize(payloadBytes);
+        // 1. Read the 16-bit OpCode (Java Ordinal)
+        int wireId = in.readUnsignedShort();
 
-        log.debug("Decoded message: flag={} type={}", msg.flag(), domainObject.getClass().getSimpleName());
+        PacketType type;
+        try {
+            // 2. O(1) Contiguous array lookup to find the Enum
+            type = PacketType.fromWireId(wireId);
+        } catch (ArrayIndexOutOfBoundsException e) {
+            log.error("Received unknown Wire ID: {}. Dropping packet.", wireId);
+            in.clear();
+            return;
+        }
 
-        // Pass the decoded domain object down the pipeline
-        out.add(domainObject);
+        // 3. Extract the remaining payload bytes
+        int payloadLength = in.readableBytes();
+        byte[] payloadBytes = new byte[payloadLength];
+        in.readBytes(payloadBytes);
+
+        try {
+            // 4. Deserialize using Apache Fory
+            Object payload = ForySerializer.deserialize(payloadBytes);
+
+            // 5. Pass the typed envelope down the pipeline to the Traffic Cop
+            out.add(new DecodedPacket(type, payload));
+
+        } catch (Exception e) {
+            log.error("Failed to deserialize Fory payload for PacketType: {}", type, e);
+        }
     }
 }

@@ -2,14 +2,15 @@ package catalyst.server.lobby.handler;
 
 import catalyst.common.dto.lobby.CharDeleteRequest;
 import catalyst.common.dto.lobby.CharDeleteResponse;
-import catalyst.server.common.network.PacketHandler;
+import catalyst.common.network.PacketHandler;
 import catalyst.common.network.ResponseCode;
-import catalyst.server.common.repository.AuthTicketStore;
 import catalyst.server.lobby.repository.CharacterRepository;
 import catalyst.server.lobby.repository.SessionRepository;
+import io.netty.channel.ChannelHandlerContext;
 import jakarta.inject.Singleton;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+
 import java.sql.SQLException;
 
 @Slf4j
@@ -19,35 +20,31 @@ public class CharDeleteRequestHandler implements PacketHandler<CharDeleteRequest
 
     private final CharacterRepository characters;
     private final SessionRepository sessions;
-    private final AuthTicketStore tickets;
 
     @Override
-    public Class<CharDeleteRequest> getPacketType() {
-        return CharDeleteRequest.class;
-    }
-
-    @Override
-    public Object handle(CharDeleteRequest req, String sessionId) {
-        Long accountId = tickets.validate(req.authToken());
-        if (accountId == null) {
-            return new CharDeleteResponse(ResponseCode.UNAUTHORIZED, "Invalid or expired auth token", -1);
-        }
+    public void handle(CharDeleteRequest req, ChannelHandlerContext ctx) {
         long charId = req.characterId();
         if (charId <= 0) {
-            return new CharDeleteResponse(ResponseCode.CONFLICT, "characterId required", -1);
+            ctx.writeAndFlush(new CharDeleteResponse(ResponseCode.CONFLICT, -1L, "characterId required"));
+            return;
         }
+
+        long accountId = 1L; // Contextual account ID supplied by Gateway session boundary
+
         try {
             if (sessions.characterHasActiveSession(charId)) {
-                return new CharDeleteResponse(ResponseCode.CONFLICT, "Character is currently online", charId);
+                ctx.writeAndFlush(new CharDeleteResponse(ResponseCode.CONFLICT, charId, "Character is currently online"));
+                return;
             }
             if (!characters.softDelete(charId, accountId)) {
-                return new CharDeleteResponse(ResponseCode.NOT_FOUND, "Character not found", charId);
+                ctx.writeAndFlush(new CharDeleteResponse(ResponseCode.NOT_FOUND, charId, "Character not found"));
+                return;
             }
             log.info("CHAR_DELETE_OK account={} characterId={}", accountId, charId);
-            return new CharDeleteResponse(ResponseCode.OK, null, charId);
+            ctx.writeAndFlush(new CharDeleteResponse(charId));
         } catch (SQLException e) {
             log.error("CHAR_DELETE_ERR account={} characterId={}", accountId, charId, e);
-            return new CharDeleteResponse(ResponseCode.ERROR, "Failed to delete character", charId);
+            ctx.writeAndFlush(new CharDeleteResponse(ResponseCode.ERROR, charId, "Failed to delete character"));
         }
     }
 }

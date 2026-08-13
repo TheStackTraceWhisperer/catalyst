@@ -1,7 +1,7 @@
 package catalyst.common.dto.world;
 
-import catalyst.common.network.GatewayFrame;
-import catalyst.common.dto.world.WorldGatewayMessage;
-
-public record LogoutRequest() implements WorldGatewayMessage {
-}
+/**
+ * Client request to gracefully terminate a session or disconnect from the world.
+ * Context identity is supplied out-of-band via the Gateway's ClientSession.
+ */
+public record LogoutRequest() {}

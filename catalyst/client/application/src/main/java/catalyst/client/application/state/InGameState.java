@@ -1,14 +1,16 @@
 package catalyst.client.application.state;
 
-import catalyst.client.network.KeepAliveService;
-import catalyst.client.network.QuicGatewayService;
 import catalyst.client.application.ui.DebugLogPanel;
 import catalyst.client.application.ui.InGamePanel;
-import catalyst.common.dto.login.*;
-import catalyst.common.dto.lobby.*;
-import catalyst.common.dto.world.*;
 import catalyst.client.engine.services.state.ApplicationState;
 import catalyst.client.engine.services.state.ApplicationStateService;
+import catalyst.client.network.KeepAliveService;
+import catalyst.client.network.ClientTransportService;
+import catalyst.common.dto.world.LogoutRequest;
+import catalyst.common.dto.world.LogoutResponse;
+import catalyst.common.dto.world.PingResponse;
+import catalyst.common.network.DecodedPacket;
+import catalyst.common.network.PacketType;
 import io.micronaut.context.BeanProvider;
 import io.micronaut.context.annotation.Prototype;
 import lombok.RequiredArgsConstructor;
@@ -23,42 +25,44 @@ public class InGameState implements ApplicationState {
     private final InGamePanel panel;
     private final DebugLogPanel debugLog;
     private final KeepAliveService keepAlive;
-    private final QuicGatewayService gateway;
+    private final ClientTransportService gateway;
     private final ApplicationStateService stateService;
     private final BeanProvider<UnauthenticatedState> unauthProvider;
     private final BeanProvider<CharacterSelectedState> selectedProvider;
 
-    private String authToken, accountId, sessionId, characterId, characterName;
-    private int    currentZoneId;
-    private long   keepaliveIntervalMs;
+    private long accountId;
+    private long characterId;
+    private String characterName;
+    private int currentZoneId;
+    private long keepaliveIntervalMs;
     private boolean sessionClosed;
 
-    public void init(String authToken, String accountId,
-                     String sessionId, String characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
-        this.authToken = authToken;
+    public void init(long accountId, long characterId, String characterName, int zoneId, long keepaliveIntervalMs) {
         this.accountId = accountId;
-        this.sessionId = sessionId;
         this.characterId = characterId;
         this.characterName = characterName;
         this.currentZoneId = zoneId;
         this.keepaliveIntervalMs = keepaliveIntervalMs;
         this.sessionClosed = false;
-        panel.setContext(characterName, sessionId);
+
+        panel.setContext(characterName, Long.toString(characterId));
         debugLog.log("Entered zone " + zoneId + " as " + characterName);
     }
 
     @Override
     public void onEnter() {
-        keepAlive.start(sessionId, keepaliveIntervalMs);
+        keepAlive.start(Long.toString(characterId), keepaliveIntervalMs);
     }
 
     @Override
     public void onUpdate(float dt) {
         GL11.glClearColor(0.07f, 0.07f, 0.09f, 1f);
         GL11.glClear(GL11.GL_COLOR_BUFFER_BIT);
+
         panel.updateKeepAlive(keepAlive.getStatus(), keepAlive.getLastRttMs());
         panel.render();
         debugLog.render();
+
         if (panel.isPingRequested())   { keepAlive.sendPing(); }
         if (panel.isCharacterSelectRequested()) doCharacterSelect();
         if (panel.isLogoutRequested()) doLogout();
@@ -86,7 +90,7 @@ public class InGameState implements ApplicationState {
     private void doCharacterSelect() {
         closeSession();
         CharacterSelectedState next = selectedProvider.get();
-        next.init(authToken, accountId, characterId, characterName, currentZoneId);
+        next.init(accountId, characterId, characterName, currentZoneId);
         stateService.changeState(() -> next);
     }
 
@@ -99,8 +103,9 @@ public class InGameState implements ApplicationState {
         if (sessionClosed) return;
         sessionClosed = true;
         try {
-            LogoutResponse resp = gateway.request(new LogoutRequest(), LogoutResponse.class);
-            debugLog.log("LOGOUT_OK session=" + resp.sessionId());
+            DecodedPacket packet = new DecodedPacket(PacketType.LOGOUT_REQUEST, new LogoutRequest());
+            gateway.request(packet, LogoutResponse.class);
+            debugLog.log("LOGOUT_OK");
         } catch (Exception e) {
             debugLog.log("LOGOUT_ERR " + e.getMessage());
         }
